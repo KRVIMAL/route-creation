@@ -184,6 +184,23 @@ console.log({user:formField.user?.value})
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="col-span-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="name"
+                value={formField.name?.value || ""}
+                onChange={handleOnChange}
+                placeholder="Enter Name"
+                className={`w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:text-white ${
+                  formField.name?.error ? "border-red-500" : "border-gray-300 dark:border-gray-600"
+                }`}
+                maxLength={100}
+              />
+              {formField.name?.error && <p className="text-red-500 text-xs mt-1">{formField.name.error}</p>}
+            </div>
             {/* User selection with search */}
             <div className="col-span-1 relative" ref={userDropdownRef}>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

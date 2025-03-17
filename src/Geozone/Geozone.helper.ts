@@ -1,5 +1,9 @@
 export const geoZoneInsertField = (data?: any) => {
   return {
+    name:{
+      value:data?.name??"",
+      error:"",
+    },
     type: {
       value: data?.geoCodeData?.geometry?.type ?? "",
       error: "",

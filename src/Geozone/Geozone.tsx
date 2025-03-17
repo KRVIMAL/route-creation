@@ -17,7 +17,7 @@ import CreateGeoZoneModal from "./component/CreateGeoZone.Modal";
 // Define types
 interface GeoZone {
   _id: string;
-  // name: string;
+  name: string;
   userId: string; // Changed from client to userId
   userEmail: string; // Added userEmail
   mobileNumber: string;
@@ -534,6 +534,7 @@ const Geozone = () => {
         },
       });
       setGeozoneData(res?.data?.data);
+      console.log({geozoneData:geozoneData})
       setTotal(res?.data?.total || 0); // CHANGED: store total
       setLoading(false);
     } catch (error: any) {
@@ -719,7 +720,7 @@ const Geozone = () => {
   const handleEditGeozone = (geozone: GeoZone) => {
     setSelectedRowData(geozone);
     console.log({users})
-    console.log({geozone:geozone})
+    console.log({geozone:geozone.userId})
     // Find the user by userId to populate the user field
     const user = users.find(u => u._id === geozone.userId);
     console.log({users:user})
