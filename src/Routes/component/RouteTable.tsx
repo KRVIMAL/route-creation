@@ -20,9 +20,50 @@ interface RouteTableProps {
   onLimitChange: (limit: number) => void;
   limit: number;
   loading?: boolean;
-  onSearch?: (term: string) => void; // Add this prop
+  onSearch?: (term: string) => void;
   searchTerm?: string;
 }
+
+// Function to truncate text and add ellipsis
+const truncateText = (text: string, maxLength: number = 20): string => {
+  if (!text) return '';
+  return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+};
+
+// Tooltip component for truncated text
+const TruncatedCell: React.FC<{ content: string; maxLength?: number }> = ({ 
+  content, 
+  maxLength = 20 
+}) => {
+  if (!content) return <span>-</span>;
+  
+  const isTruncated = content.length > maxLength;
+  const displayText = isTruncated ? truncateText(content, maxLength) : content;
+  
+  return (
+    <span className="truncated-cell" title={isTruncated ? content : ""}>
+      {displayText}
+    </span>
+  );
+};
+
+// Component for displaying a list of items with truncation
+const TruncatedList: React.FC<{ items: string[]; maxLength?: number }> = ({ 
+  items, 
+  maxLength = 20 
+}) => {
+  if (!items || items.length === 0) return <span>-</span>;
+  
+  const joinedText = items.join(", ");
+  const isTruncated = joinedText.length > maxLength;
+  const displayText = isTruncated ? truncateText(joinedText, maxLength) : joinedText;
+  
+  return (
+    <span className="truncated-cell" title={isTruncated ? joinedText : ""}>
+      {displayText}
+    </span>
+  );
+};
 
 const RouteTable: React.FC<RouteTableProps> = ({
   routes,
@@ -37,7 +78,6 @@ const RouteTable: React.FC<RouteTableProps> = ({
   onSearch,
   searchTerm = "",
 }) => {
-  // const [searchTerm, setSearchTerm] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [routeToDelete, setRouteToDelete] = useState<string | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -123,6 +163,7 @@ const RouteTable: React.FC<RouteTableProps> = ({
           <table className="routes-table">
             <thead>
               <tr>
+                <th>Route ID</th>
                 <th>Source</th>
                 <th>Destination</th>
                 <th>Via</th>
@@ -133,18 +174,20 @@ const RouteTable: React.FC<RouteTableProps> = ({
               </tr>
             </thead>
             <tbody>
-              {filteredRoutes.map((route) => (
+              {filteredRoutes.map((route:any) => (
                 <tr key={route._id}>
-                  <td>{route.origin.name}</td>
-                  <td>{route.destination.name}</td>
+                  <td><TruncatedCell content={route.routeId} maxLength={15} /></td>
+                  <td><TruncatedCell content={route.origin.name} maxLength={25} /></td>
+                  <td><TruncatedCell content={route.destination.name} maxLength={25} /></td>
                   <td>
-                    {route.waypoints.length > 0
-                      ? route.waypoints.map((wp) => wp.name).join(", ")
-                      : "-"}
+                    <TruncatedList 
+                      items={route.waypoints.map((wp:any) => wp.name)} 
+                      maxLength={30} 
+                    />
                   </td>
                   <td>{route.distance.text}</td>
                   <td>{route.duration.text}</td>
-                  <td>{route.name}</td>
+                  <td><TruncatedCell content={route.name} maxLength={25} /></td>
                   <td className="action-buttons">
                     <button
                       className="view-btn"

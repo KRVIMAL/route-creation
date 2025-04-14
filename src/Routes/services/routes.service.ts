@@ -51,7 +51,7 @@ export const createRoute = async (route: Route): Promise<Route | null> => {
       throw new Error(data.message);
     }
     
-    return data.data as Route;
+    return data as any;
   } catch (error) {
     console.error('Error creating route:', error);
     return null;
@@ -61,7 +61,7 @@ export const createRoute = async (route: Route): Promise<Route | null> => {
 export const updateRoute = async (id: string, route: Route): Promise<Route | null> => {
   try {
     const response = await fetch(`${API_URL}/routes/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -74,7 +74,7 @@ export const updateRoute = async (id: string, route: Route): Promise<Route | nul
       throw new Error(data.message);
     }
     
-    return data.data as Route;
+    return data as any;
   } catch (error) {
     console.error(`Error updating route ${id}:`, error);
     return null;
@@ -92,8 +92,7 @@ export const deleteRoute = async (id: string): Promise<boolean> => {
     if (!data.success) {
       throw new Error(data.message);
     }
-    
-    return true;
+    return data as any;
   } catch (error) {
     console.error(`Error deleting route ${id}:`, error);
     return false;
