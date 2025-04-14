@@ -282,8 +282,11 @@ const RouteEditor: React.FC<RouteEditorProps> = ({ initialRoute, onSave, onCance
 
     setIsLoading(true);
     
+    // Make a copy of the current waypoints
+    const currentWaypoints = [...route.waypoints];
+    
     // Prepare waypoints for DirectionsService
-    const validWaypoints = route.waypoints
+    const validWaypoints = currentWaypoints
       .filter(wp => wp.name.trim() !== '')
       .map(wp => ({
         location: { lat: wp.lat, lng: wp.lng },
@@ -323,7 +326,9 @@ const RouteEditor: React.FC<RouteEditorProps> = ({ initialRoute, onSave, onCance
         
         setRouteOptions(options);
         setSelectedRouteIndex(0);
-        processRouteData(response, 0);
+        
+        // Use our custom function that preserves waypoints
+        processRouteDataWithCustomWaypoints(response, 0, currentWaypoints);
       } else {
         alert(`Directions request failed due to ${status}`);
       }
@@ -434,14 +439,135 @@ const RouteEditor: React.FC<RouteEditorProps> = ({ initialRoute, onSave, onCance
   };
 
   const removeWaypoint = (index: number) => {
+    // Create a new waypoints array without the waypoint to be removed
     const newWaypoints = [...route.waypoints];
     newWaypoints.splice(index, 1);
+    
+    // Update the route state with the new waypoints
     setRoute(prev => ({ ...prev, waypoints: newWaypoints }));
     
-    // Recalculate route if there are still valid waypoints and origin/destination
+    // Delay the recalculation to ensure state is updated
     if (route.origin.lat && route.destination.lat) {
-      setTimeout(() => calculateRoute(), 100);
+      // Prepare waypoints for DirectionsService
+      const validWaypoints = newWaypoints
+        .filter(wp => wp.name.trim() !== '')
+        .map(wp => ({
+          location: { lat: wp.lat, lng: wp.lng },
+          stopover: true
+        }));
+      
+      const request: google.maps.DirectionsRequest = {
+        origin: { lat: route.origin.lat, lng: route.origin.lng },
+        destination: { lat: route.destination.lat, lng: route.destination.lng },
+        waypoints: validWaypoints,
+        optimizeWaypoints: false,
+        travelMode: route.travelMode as unknown as google.maps.TravelMode,
+        provideRouteAlternatives: validWaypoints.length === 0
+      };
+  
+      // Use setTimeout to ensure the state update has completed
+      setTimeout(() => {
+        if (directionsServiceRef.current) {
+          setIsLoading(true);
+          directionsServiceRef.current.route(request, (response:any, status) => {
+            setIsLoading(false);
+            
+            if (status === 'OK') {
+              setDirectionsResponse(response);
+              if (directionsRendererRef.current) {
+                directionsRendererRef.current.setDirections(response);
+                directionsRendererRef.current.setRouteIndex(0);
+              }
+              
+              // Generate route options for selection
+              const options:any = response.routes.map((route:any, index:any) => {
+                const distance = route.legs[0].distance.text;
+                const duration = route.legs[0].duration.text;
+                const summary = route.summary || `Route ${index + 1}`;
+                
+                return {
+                  index,
+                  summary,
+                  distance,
+                  duration
+                };
+              });
+              
+              setRouteOptions(options);
+              setSelectedRouteIndex(0);
+              
+              // Process the updated route data but keep our current waypoints
+              const updatedResponse = { ...response };
+              processRouteDataWithCustomWaypoints(updatedResponse, 0, newWaypoints);
+            } else {
+              alert(`Directions request failed due to ${status}`);
+            }
+          });
+        }
+      }, 100);
     }
+  };
+  
+  // Add this new function to process route data but preserve our waypoints
+  const processRouteDataWithCustomWaypoints = (response: any, routeIndex = selectedRouteIndex, customWaypoints: Location[] = []) => {
+    if (!response || !response.routes || response.routes.length === 0) {
+      return;
+    }
+    
+    const route = response.routes[routeIndex];
+    const path = route.overview_path;
+    const legs = route.legs;
+    
+    // Calculate total distance and duration
+    let totalDistance = 0;
+    let totalDuration = 0;
+    legs.forEach((leg: any) => {
+      totalDistance += leg.distance.value;
+      totalDuration += leg.duration.value;
+    });
+    
+    // Convert to appropriate units
+    const distanceInKm = (totalDistance / 1000).toFixed(2);
+    const distanceInMiles = (totalDistance / 1609.344).toFixed(2);
+    const hours = Math.floor(totalDuration / 3600);
+    const minutes = Math.floor((totalDuration % 3600) / 60);
+    
+    const distanceText = `${distanceInKm} km (${distanceInMiles} miles)`;
+    const durationText = `${hours > 0 ? `${hours} hr ` : ''}${minutes} min`;
+    
+    // Origin with name
+    const originName = legs[0].start_address;
+    const originLocation = {
+      name: originName,
+      lat: legs[0].start_location.lat(),
+      lng: legs[0].start_location.lng()
+    };
+    
+    // Destination with name
+    const lastLeg = legs[legs.length - 1];
+    const destinationName = lastLeg.end_address;
+    const destinationLocation = {
+      name: destinationName,
+      lat: lastLeg.end_location.lat(),
+      lng: lastLeg.end_location.lng()
+    };
+    
+    // Path coordinates
+    const pathCoords: Coordinates[] = path.map((point: any) => ({
+      lat: point.lat(),
+      lng: point.lng()
+    }));
+    
+    // Update route data but keep our custom waypoints
+    setRoute(prev => ({
+      ...prev,
+      distance: { value: totalDistance, text: distanceText },
+      duration: { value: totalDuration, text: durationText },
+      origin: originLocation,
+      destination: destinationLocation,
+      waypoints: customWaypoints, // Use our custom waypoints instead of extracting from route
+      path: pathCoords
+    }));
   };
 
   const downloadJson = () => {
@@ -590,12 +716,12 @@ const RouteEditor: React.FC<RouteEditorProps> = ({ initialRoute, onSave, onCance
     </div>
   </div>
 )}
-
+{/* 
 <div className="download-json">
   <button className="download-json-btn" onClick={downloadJson}>
     Download as JSON
   </button>
-</div>
+</div> */}
 
 <div className="form-actions">
   <button 
