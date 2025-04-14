@@ -202,6 +202,8 @@ button:disabled {
 .left-panel {
   flex: 0 0 30%;
   max-width: 30%;
+  background-color: #F8F8F8;
+
 }
 
 .right-panel {
@@ -618,4 +620,41 @@ button:disabled {
   text-align: center;
   padding: 30px;
   color: #666;
+}
+
+/* Add these to your existing CSS */
+.location-point {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 15px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  color: #666;
+  cursor: grab;
+  margin-top: 27px; /* Align with point marker */
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.is-dragging {
+  opacity: 0.5;
+  border: 1px dashed #4285F4;
+  background-color: rgba(66, 133, 244, 0.05);
+}
+
+.waypoint .form-group {
+  flex-grow: 1;
+}
+
+/* Adjust the point-marker positioning with the drag handle */
+.waypoint .point-marker {
+  margin-right: 5px;
 }

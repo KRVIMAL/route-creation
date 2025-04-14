@@ -6,11 +6,15 @@ import {
   createRoute,
   updateRoute,
   deleteRoute,
+  searchRoutes,
 } from "./Routes/services/routes.service";
 import "./App.css";
 import { Route } from "./Routes/types";
 import RouteEditor from "./Routes/RouteEditor";
 import RouteTable from "./Routes/component/RouteTable";
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+
 
 const App: React.FC = () => {
   const [routes, setRoutes] = useState<Route[]>([]);
@@ -20,9 +24,15 @@ const App: React.FC = () => {
   const [totalCount, setTotalCount] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [limit, setLimit] = useState<number>(10);
-
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [searchTimeout, setSearchTimeout] = useState<any>(null);
+  const userId='67cea10c4858dd0fc1e444e2';
   useEffect(() => {
-    loadRoutes(currentPage, limit);
+    if (searchTerm.trim() === '') {
+      loadRoutes(currentPage, limit);
+    } else {
+      handleSearch(searchTerm);
+    }
   }, [currentPage, limit]);
 
   const loadRoutes = async (page: number, limit: number) => {
@@ -38,13 +48,48 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
+    
+    // Clear any existing timeout
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+    
+    // Set a new timeout to debounce the search
+    const timeout = setTimeout(() => {
+      if (term.trim() === '') {
+        // If search term is empty, load regular routes
+        loadRoutes(currentPage, limit);
+      } else {
+        // Execute search
+        searchRoutesData(term, currentPage, limit);
+      }
+    }, 500); // Debounce by 500ms
+    
+    setSearchTimeout(timeout as unknown as any);
+  };
+
+  const searchRoutesData = async (term: string, page: number, itemLimit: number) => {
+    setLoading(true);
+    try {
+      const result = await searchRoutes(term, page, itemLimit);
+      setRoutes(result.routes || []);
+      setTotalCount(result.total || 0);
+    } catch (error) {
+      console.error('Error searching routes:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
 
   const handleLimitChange = (newLimit: number) => {
     setLimit(newLimit);
-    setCurrentPage(1); // Reset to first page when changing limit
+    setCurrentPage(1);
   };
 
   const handleCreateRoute = () => {
@@ -71,32 +116,23 @@ const App: React.FC = () => {
 
   const handleSaveRoute = async (routeData: Route) => {
     try {
+      const routeWithUserId = {
+        ...routeData,
+        userId: userId
+      };
+  
       if (currentRoute && currentRoute._id) {
-        // Update existing route
-        // In a real app, you would use this:
-        const updated = await updateRoute(currentRoute._id, routeData);
+        const updated = await updateRoute(currentRoute._id, routeWithUserId);
         console.log({ updated });
-        // For now, just update state:
         setRoutes((prevRoutes) =>
           prevRoutes.map((route) =>
             route._id === currentRoute._id
-              ? { ...routeData, _id: currentRoute._id }
+              ? { ...routeWithUserId, _id: currentRoute._id }
               : route
           )
         );
       } else {
-        // Create new route
-        // In a real app, you would use this:
-        const created = await createRoute(routeData);
-
-        // For now, just update state:
-        // const newRoute = {
-        //   ...routeData,
-        //   // _id: `temp-${Date.now()}`,
-        //   // routeId: `route-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-        //   // createdAt: new Date().toISOString(),
-        //   // updatedAt: new Date().toISOString()
-        // };
+        const created = await createRoute(routeWithUserId);
         setRoutes((prevRoutes) => [...prevRoutes]);
         console.log({ created: created });
       }
@@ -106,7 +142,6 @@ const App: React.FC = () => {
       console.error("Error saving route:", error);
     }
   };
-
   const handleCancelEdit = () => {
     setShowEditor(false);
     setCurrentRoute(null);
@@ -120,11 +155,13 @@ const App: React.FC = () => {
 
       <main className="app-main">
         {showEditor ? (
+          //  <DndProvider backend={HTML5Backend}>
           <RouteEditor
             initialRoute={currentRoute}
             onSave={handleSaveRoute}
             onCancel={handleCancelEdit}
           />
+          // </DndProvider>
         ) : (
           <div className="routes-list-container">
             <div className="routes-header">
@@ -147,6 +184,8 @@ const App: React.FC = () => {
                 limit={limit}
                 onLimitChange={handleLimitChange}
                 loading={loading}
+                onSearch={handleSearch}
+                searchTerm={searchTerm}
               />
             )}
           </div>

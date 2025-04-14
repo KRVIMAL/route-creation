@@ -1,4 +1,3 @@
-// api.ts
 import { Route, ApiResponse } from '../types';
 
 const API_URL = 'http://localhost:5678';
@@ -98,5 +97,29 @@ export const deleteRoute = async (id: string): Promise<boolean> => {
   } catch (error) {
     console.error(`Error deleting route ${id}:`, error);
     return false;
+  }
+};
+
+export const searchRoutes = async (
+  searchText: string,
+  page: number = 1,
+  limit: number = 10
+): Promise<any> => {
+  try {
+    const response = await fetch(
+      `${API_URL}/routes/search?searchText=${encodeURIComponent(searchText)}&page=${page}&limit=${limit}`
+    );
+    
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.message);
+    }
+    
+    // Handle the nested data structure in the response
+    return data.data.data;
+  } catch (error) {
+    console.error('Error searching routes:', error);
+    return { routes: [], total: 0 };
   }
 };

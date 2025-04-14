@@ -2,9 +2,105 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
 import { Route, Location, Coordinates } from './types';
-import { FaPlus, FaTimes } from 'react-icons/fa';
+import { FaPlus, FaTimes, FaGripVertical } from 'react-icons/fa';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import '../App.css';
 
+// Define the item type as a string constant
+const WAYPOINT_TYPE = 'waypoint';
+
+// Draggable waypoint component
+interface WaypointItemProps {
+  waypoint: Location;
+  index: number;
+  moveWaypoint: (dragIndex: number, hoverIndex: number) => void;
+  onChange: (value: string) => void;
+  onRemove: () => void;
+}
+
+const WaypointItem = ({ waypoint, index, moveWaypoint, onChange, onRemove }: WaypointItemProps) => {
+  const ref = useRef<HTMLDivElement>(null);
+  
+  // Configure drag
+  const [{ isDragging }, drag] = useDrag({
+    type: WAYPOINT_TYPE,
+    item: { index },
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  });
+  
+  // Configure drop
+  const [, drop] = useDrop({
+    accept: WAYPOINT_TYPE,
+    hover: (item: { index: number }, monitor) => {
+      if (!ref.current) {
+        return;
+      }
+      
+      const dragIndex = item.index;
+      const hoverIndex = index;
+      
+      // Don't replace items with themselves
+      if (dragIndex === hoverIndex) {
+        return;
+      }
+      
+      // Time to actually perform the action - move the waypoint
+      moveWaypoint(dragIndex, hoverIndex);
+      
+      // Note: we're mutating the monitor item here!
+      // This is crucial to make the drag work properly
+      item.index = hoverIndex;
+    },
+  });
+  
+  // Connect the drag and drop refs (order matters)
+  drag(drop(ref));
+  
+  return (
+    <div 
+      ref={ref} 
+      className={`location-point waypoint ${isDragging ? 'is-dragging' : ''}`}
+      style={{ 
+        opacity: isDragging ? 0.5 : 1,
+        cursor: 'move',
+        position: 'relative'  // Important for drop targeting
+      }}
+    >
+      <div className="drag-handle">
+        <FaGripVertical />
+      </div>
+      <div className="point-marker"></div>
+      <div className="form-group">
+        <label htmlFor={`waypoint-input-${index}`}>Via Destination</label>
+        <div className="input-with-icon">
+          <input
+            id={`waypoint-input-${index}`}
+            type="text"
+            value={waypoint.name}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="Enter waypoint location"
+            className="form-control"
+          />
+          <button 
+            className="remove-waypoint-btn"
+            onClick={onRemove}
+          >
+            <FaTimes />
+          </button>
+          <div className="toggle-fence">
+            <input type="checkbox" id={`waypoint-fence-${index}`} />
+            <label htmlFor={`waypoint-fence-${index}`}></label>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Main RouteEditor component
 interface RouteEditorProps {
   initialRoute?: Route | null;
   onSave: (route: Route) => void;
@@ -154,6 +250,28 @@ const RouteEditor: React.FC<RouteEditorProps> = ({ initialRoute, onSave, onCance
         setRoute(prev => ({ ...prev, waypoints: newWaypoints }));
       }
     });
+  };
+
+  // Move waypoint from one index to another
+  const moveWaypoint = (dragIndex: number, hoverIndex: number) => {
+    // Create a new array to avoid mutating state directly
+    const updatedWaypoints = [...route.waypoints];
+    
+    // Remove the item from its original position
+    const draggedItem = updatedWaypoints[dragIndex];
+    
+    // Don't proceed if the item doesn't exist
+    if (!draggedItem) return;
+    
+    // Remove from original position and insert at new position
+    updatedWaypoints.splice(dragIndex, 1);
+    updatedWaypoints.splice(hoverIndex, 0, draggedItem);
+    
+    // Update the state with the new array
+    setRoute(prev => ({
+      ...prev,
+      waypoints: updatedWaypoints
+    }));
   };
 
   const calculateRoute = () => {
@@ -319,6 +437,11 @@ const RouteEditor: React.FC<RouteEditorProps> = ({ initialRoute, onSave, onCance
     const newWaypoints = [...route.waypoints];
     newWaypoints.splice(index, 1);
     setRoute(prev => ({ ...prev, waypoints: newWaypoints }));
+    
+    // Recalculate route if there are still valid waypoints and origin/destination
+    if (route.origin.lat && route.destination.lat) {
+      setTimeout(() => calculateRoute(), 100);
+    }
   };
 
   const downloadJson = () => {
@@ -339,152 +462,136 @@ const RouteEditor: React.FC<RouteEditorProps> = ({ initialRoute, onSave, onCance
   };
 
   return (
-    <div className="route-editor">
-      <div className="editor-container">
-        <div className="left-panel rounded-md bg-emerald-400 px-4 py-4">
-          <h2>{initialRoute ? 'Edit Route' : 'Create Geo Zone with Route'}</h2>
-          
-          <div className="form-group">
-            <label htmlFor="route-name">Name *</label>
-            <input
-              id="route-name"
-              type="text"
-              value={route.name}
-              onChange={(e) => setRoute(prev => ({ ...prev, name: e.target.value }))}
-              placeholder="Enter route name"
-              className="form-control"
-            />
-          </div>
-          
-          <div className="location-inputs">
-            <div className="location-point source">
-              <div className="point-marker"></div>
-              <div className="form-group">
-                <label htmlFor="origin-input">Source *</label>
-                <div className="input-with-icon">
-                  <input
-                    id="origin-input"
-                    type="text"
-                    value={route.origin.name}
-                    onChange={(e) => setRoute(prev => ({ 
-                      ...prev, 
-                      origin: { ...prev.origin, name: e.target.value } 
-                    }))}
-                    placeholder="Enter origin location"
-                    className="form-control"
-                  />
-                  <div className="toggle-fence">
-                    <input type="checkbox" id="origin-fence" />
-                    <label htmlFor="origin-fence"></label>
-                  </div>
-                </div>
-              </div>
+    <DndProvider backend={HTML5Backend}>
+      <div className="route-editor">
+        <div className="editor-container">
+          <div className="left-panel rounded-md px-4 py-4">
+            <h2>{initialRoute ? 'Edit Route' : 'Create Geo Zone with Route'}</h2>
+            
+            <div className="form-group">
+              <label htmlFor="route-name">Name *</label>
+              <input
+                id="route-name"
+                type="text"
+                value={route.name}
+                onChange={(e) => setRoute(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Enter route name"
+                className="form-control"
+              />
             </div>
             
-            {route.waypoints.map((waypoint, index) => (
-              <div className="location-point waypoint" key={index}>
+            <div className="location-inputs">
+              <div className="location-point source">
                 <div className="point-marker"></div>
                 <div className="form-group">
-                  <label htmlFor={`waypoint-input-${index}`}>Via Destination</label>
+                  <label htmlFor="origin-input">Source *</label>
                   <div className="input-with-icon">
                     <input
-                      id={`waypoint-input-${index}`}
+                      id="origin-input"
                       type="text"
-                      value={waypoint.name}
-                      onChange={(e) => {
-                        const newWaypoints = [...route.waypoints];
-                        newWaypoints[index] = { ...waypoint, name: e.target.value };
-                        setRoute(prev => ({ ...prev, waypoints: newWaypoints }));
-                      }}
-                      placeholder="Enter waypoint location"
+                      value={route.origin.name}
+                      onChange={(e) => setRoute(prev => ({ 
+                        ...prev, 
+                        origin: { ...prev.origin, name: e.target.value } 
+                      }))}
+                      placeholder="Enter origin location"
                       className="form-control"
                     />
-                    <button 
-                      className="remove-waypoint-btn"
-                      onClick={() => removeWaypoint(index)}
-                    >
-                      <FaTimes />
-                    </button>
                     <div className="toggle-fence">
-                      <input type="checkbox" id={`waypoint-fence-${index}`} />
-                      <label htmlFor={`waypoint-fence-${index}`}></label>
+                      <input type="checkbox" id="origin-fence" />
+                      <label htmlFor="origin-fence"></label>
                     </div>
                   </div>
                 </div>
               </div>
-            ))}
-            
-            <div className="location-point destination">
-              <div className="point-marker"></div>
-              <div className="form-group">
-                <label htmlFor="destination-input">Destination *</label>
-                <div className="input-with-icon">
-                  <input
-                    id="destination-input"
-                    type="text"
-                    value={route.destination.name}
-                    onChange={(e) => setRoute(prev => ({ 
-                      ...prev, 
-                      destination: { ...prev.destination, name: e.target.value } 
-                    }))}
-                    placeholder="Enter destination location"
-                    className="form-control"
-                  />
-                  <div className="toggle-fence">
-                    <input type="checkbox" id="destination-fence" />
-                    <label htmlFor="destination-fence"></label>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="add-waypoint">
-              <button 
-                className="add-waypoint-btn"
-                onClick={addWaypoint}
-              >
-                <FaPlus /> Add Via Destination
-              </button>
-            </div>
-          </div>
-          
-          <div className="form-group travel-mode">
-            <label htmlFor="travel-mode">Travel Mode</label>
-            <select 
-              id="travel-mode" 
-              value={route.travelMode} 
-              onChange={(e) => setRoute(prev => ({ ...prev, travelMode: e.target.value }))}
-              className="form-control"
-            >
-              {TRAVEL_MODES.map(mode => (
-                <option key={mode.value} value={mode.value}>{mode.label}</option>
+              
+              {/* Waypoints - using the simpler implementation */}
+              {route.waypoints.map((waypoint, index) => (
+                <WaypointItem
+                  key={`waypoint-${index}`} // Unique key that includes the index
+                  index={index}
+                  waypoint={waypoint}
+                  moveWaypoint={moveWaypoint}
+                  onChange={(value) => {
+                    const newWaypoints = [...route.waypoints];
+                    newWaypoints[index] = { ...waypoint, name: value };
+                    setRoute(prev => ({ ...prev, waypoints: newWaypoints }));
+                  }}
+                  onRemove={() => removeWaypoint(index)}
+                />
               ))}
-            </select>
-          </div>
-          
-          {routeOptions.length > 0 && (
-            <div className="route-options">
-              <h3>Alternate Routes</h3>
-              <div className="route-options-list">
-                {routeOptions.map((routeOpt, index) => (
-                  <div 
-                    key={index}
-                    className={`route-option ${index === selectedRouteIndex ? 'selected' : ''}`}
-                    onClick={() => selectRoute(index)}
-                  >
-                    <div className="route-name">
-                      <strong>{routeOpt.summary}</strong>
-                    </div>
-                    <div className="route-details">
-                      {routeOpt.distance} • {routeOpt.duration}
+              
+              <div className="location-point destination">
+                <div className="point-marker"></div>
+                <div className="form-group">
+                  <label htmlFor="destination-input">Destination *</label>
+                  <div className="input-with-icon">
+                    <input
+                      id="destination-input"
+                      type="text"
+                      value={route.destination.name}
+                      onChange={(e) => setRoute(prev => ({ 
+                        ...prev, 
+                        destination: { ...prev.destination, name: e.target.value } 
+                      }))}
+                      placeholder="Enter destination location"
+                      className="form-control"
+                    />
+                    <div className="toggle-fence">
+                      <input type="checkbox" id="destination-fence" />
+                      <label htmlFor="destination-fence"></label>
                     </div>
                   </div>
-                ))}
+                </div>
+              </div>
+              
+              <div className="add-waypoint">
+                <button 
+                  className="add-waypoint-btn"
+                  onClick={addWaypoint}
+                >
+                  <FaPlus /> Add Via Destination
+                </button>
               </div>
             </div>
-          )}
-          
-          <div className="download-json">
+            
+            <div className="form-group travel-mode">
+              <label htmlFor="travel-mode">Travel Mode</label>
+              <select 
+                id="travel-mode" 
+  value={route.travelMode} 
+  onChange={(e) => setRoute(prev => ({ ...prev, travelMode: e.target.value }))}
+  className="form-control"
+>
+  {TRAVEL_MODES.map(mode => (
+    <option key={mode.value} value={mode.value}>{mode.label}</option>
+  ))}
+</select>
+</div>
+
+{routeOptions.length > 0 && (
+  <div className="route-options">
+    <h3>Alternate Routes</h3>
+    <div className="route-options-list">
+      {routeOptions.map((routeOpt, index) => (
+        <div 
+          key={index}
+          className={`route-option ${index === selectedRouteIndex ? 'selected' : ''}`}
+          onClick={() => selectRoute(index)}
+        >
+          <div className="route-name">
+            <strong>{routeOpt.summary}</strong>
+          </div>
+          <div className="route-details">
+            {routeOpt.distance} • {routeOpt.duration}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+
+<div className="download-json">
   <button className="download-json-btn" onClick={downloadJson}>
     Download as JSON
   </button>
@@ -520,6 +627,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({ initialRoute, onSave, onCance
 </div>
 </div>
 </div>
+</DndProvider>
 );
 };
 
