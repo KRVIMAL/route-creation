@@ -13,6 +13,7 @@ import { Route } from "./Routes/types";
 import RouteEditor from "./Routes/RouteEditor";
 import RouteTable from "./Routes/component/RouteTable";
 import toast, { Toaster } from "react-hot-toast";
+import { FaSearch } from "react-icons/fa";
 
 const App: React.FC = () => {
   const [routes, setRoutes] = useState<Route[]>([]);
@@ -171,8 +172,20 @@ const App: React.FC = () => {
         ) : (
           // </DndProvider>
           <div className="routes-list-container">
-            <div className="routes-header">
-              <h2>Routes</h2>
+            <div className="routes-header flex justify-end items-center gap-4 mb-4">
+              <div className="flex-grow"></div>{" "}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search routes..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="pl-10 pr-4 py-2 border rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                  <FaSearch />
+                </div>
+              </div>
               <button className="create-btn" onClick={handleCreateRoute}>
                 Create Route
               </button>
