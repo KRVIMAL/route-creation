@@ -71,12 +71,12 @@ button:disabled {
 }
 
 .save-btn, .calculate-btn {
-  background-color: #34A853;
+  background-color: #4285F4;
   color: white;
 }
 
 .save-btn:hover, .calculate-btn:hover {
-  background-color: #2d9249;
+  background-color: #3b78e7;
 }
 
 .delete-btn {
@@ -241,7 +241,7 @@ button:disabled {
   display: flex;
   gap: 10px;
   margin-top: 20px;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 /* Location inputs styles */

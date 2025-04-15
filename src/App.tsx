@@ -64,7 +64,7 @@ const App: React.FC = () => {
         // Execute search
         searchRoutesData(term, currentPage, limit);
       }
-    }, 500); // Debounce by 500ms
+    }, 700); // Debounce by 500ms
 
     setSearchTimeout(timeout as unknown as any);
   };
