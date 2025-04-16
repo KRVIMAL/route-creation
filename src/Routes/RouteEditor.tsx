@@ -56,7 +56,10 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
         
         // If editing existing route, calculate and display it
         if (initialRoute && initialRoute.origin.lat && initialRoute.destination.lat) {
-          calculateRoute();
+          // Wait a bit for Google Maps to fully initialize
+          setTimeout(() => {
+            calculateRoute(true);
+          }, 500);
         }
       }
     };
@@ -146,7 +149,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
     }));
   };
 
-  const calculateRoute = () => {
+  const calculateRoute = (isInitialCalculation:any = false) => {
     if (!mapServiceRef.current) return;
     
     if (!route.origin.name || !route.destination.name) {
@@ -183,16 +186,110 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
         });
         
         setRouteOptions(options);
-        setSelectedRouteIndex(0);
         
-        // Use our custom function that preserves waypoints
-        processRouteDataWithCustomWaypoints(response, 0, currentWaypoints);
+        // If this is an initial calculation when editing an existing route,
+        // try to find the closest matching route to what was saved
+        if (isInitialCalculation && initialRoute && initialRoute.path.length > 0) {
+          // Compare path coordinates to find the best match
+          const closestRouteIndex = findClosestRouteMatch(response, initialRoute.path);
+          setSelectedRouteIndex(closestRouteIndex);
+          
+          // Set the route index on the map
+          if (mapServiceRef.current) {
+            mapServiceRef.current.setRouteIndex(closestRouteIndex);
+          }
+          
+          // Use our custom function that preserves waypoints
+          processRouteDataWithCustomWaypoints(response, closestRouteIndex, currentWaypoints);
+        } else {
+          setSelectedRouteIndex(0);
+          // Use our custom function that preserves waypoints
+          processRouteDataWithCustomWaypoints(response, 0, currentWaypoints);
+        }
       },
       (status:any) => {
         setIsLoading(false);
         alert(`Directions request failed due to ${status}`);
       }
     );
+  };
+  
+  // Helper function to find the closest route match based on path similarity
+  const findClosestRouteMatch = (response: any, savedPath: any[]): number => {
+    if (!response || !response.routes || response.routes.length === 0) {
+      return 0;
+    }
+    
+    // If there's only one route, use it
+    if (response.routes.length === 1) {
+      return 0;
+    }
+    
+    let bestMatchIndex = 0;
+    let bestMatchScore = Number.MAX_VALUE;
+    
+    // Compare each route's path to the saved path
+    response.routes.forEach((route: any, index: number) => {
+      const routePath = route.overview_path.map((point: any) => ({
+        lat: point.lat(),
+        lng: point.lng(),
+      }));
+      
+      // Calculate a simple distance-based similarity score
+      // Lower is better - represents average distance between points
+      const score = calculatePathSimilarity(routePath, savedPath);
+      
+      if (score < bestMatchScore) {
+        bestMatchScore = score;
+        bestMatchIndex = index;
+      }
+    });
+    
+    return bestMatchIndex;
+  };
+  
+  // Calculate similarity between two paths
+  const calculatePathSimilarity = (path1: any[], path2: any[]): number => {
+    // Use a simple approach: sample a few points from each path and compare
+    const numSamplePoints = Math.min(5, Math.min(path1.length, path2.length));
+    
+    if (numSamplePoints === 0) return Number.MAX_VALUE;
+    
+    let totalDistance = 0;
+    
+    // Sample points at regular intervals
+    for (let i = 0; i < numSamplePoints; i++) {
+      const index1 = Math.floor(i * (path1.length - 1) / (numSamplePoints - 1));
+      const index2 = Math.floor(i * (path2.length - 1) / (numSamplePoints - 1));
+      
+      const point1 = path1[index1];
+      const point2 = path2[index2];
+      
+      // Calculate haversine distance between the points
+      const distance = calculateDistance(point1, point2);
+      totalDistance += distance;
+    }
+    
+    return totalDistance / numSamplePoints;
+  };
+  
+  // Calculate distance between two coordinates using Haversine formula
+  const calculateDistance = (point1: any, point2: any): number => {
+    const R = 6371; // Earth's radius in km
+    const dLat = toRad(point2.lat - point1.lat);
+    const dLng = toRad(point2.lng - point1.lng);
+    
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(toRad(point1.lat)) * Math.cos(toRad(point2.lat)) * 
+      Math.sin(dLng/2) * Math.sin(dLng/2);
+    
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+  
+  const toRad = (value: number): number => {
+    return value * Math.PI / 180;
   };
 
   const selectRoute = (index: number) => {
@@ -397,13 +494,6 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
                       placeholder="Enter origin location"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                    <div className="absolute right-2 top-2.5">
-                      <input type="checkbox" id="origin-fence" className="hidden" />
-                      <label 
-                        htmlFor="origin-fence"
-                        className="block w-6 h-6 bg-gray-200 rounded cursor-pointer relative"
-                      ></label>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -446,13 +536,6 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
                       placeholder="Enter destination location"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                    <div className="absolute right-2 top-2.5">
-                      <input type="checkbox" id="destination-fence" className="hidden" />
-                      <label 
-                        htmlFor="destination-fence"
-                        className="block w-6 h-6 bg-gray-200 rounded cursor-pointer relative"
-                      ></label>
-                    </div>
                   </div>
                 </div>
               </div>

@@ -1,7 +1,7 @@
 import { Route, ApiResponse } from '../types';
-
+import axios from 'axios';
 const API_URL = 'http://192.168.1.36.:5678';
-
+const API_BASE_URL = 'http://localhost:9090';
 export const fetchRoutes = async (page: number, limit: number): Promise<Route[]> => {
   try {
     const response = await fetch(`${API_URL}/routes?page=${page}&limit=${limit}`);
@@ -120,5 +120,21 @@ export const searchRoutes = async (
   } catch (error) {
     console.error('Error searching routes:', error);
     return { routes: [], total: 0 };
+  }
+};
+
+export const fetchGeofences = async (page = 1, limit = 50): Promise<any[]> => {
+  try {
+    const response:any = await axios.get<ApiResponse>(`${API_BASE_URL}/geofences?page=${page}&limit=${limit}`);
+    console.log()
+    // if (response.data.success && response.data.statusCode === 200) {
+      const geofenceResponse = response.data.data as any;
+      console.log(geofenceResponse.data,"data")
+      return geofenceResponse.data;
+    // }
+    // return response.data.data;
+  } catch (error) {
+    console.error('Error fetching geofences:', error);
+    return [];
   }
 };

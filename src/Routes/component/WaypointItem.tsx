@@ -88,18 +88,11 @@ const WaypointItem = ({
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button 
-            className="absolute right-10 top-2.5 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-600"
+            className="absolute right-2 top-2.5 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-600"
             onClick={onRemove}
           >
             <FaTimes />
           </button>
-          <div className="absolute right-2 top-2.5">
-            <input type="checkbox" id={`waypoint-fence-${index}`} className="hidden" />
-            <label 
-              htmlFor={`waypoint-fence-${index}`}
-              className="block w-6 h-6 bg-gray-200 rounded cursor-pointer relative checked:bg-green-500"
-            ></label>
-          </div>
         </div>
       </div>
     </div>

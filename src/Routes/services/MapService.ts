@@ -22,7 +22,7 @@ export class MapService {
   async initialize(mapRef: HTMLDivElement): Promise<boolean> {
     try {
       const loader = new Loader({
-        apiKey: API_KEY,
+        apiKey: "AIzaSyAaZ1M_ofwVoLohowruNhY0fyihH9NpcI0", // Using the key directly as in original code
         version: "weekly",
         libraries: ["places"],
       });
