@@ -34,45 +34,45 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapServiceRef = useRef<MapService | null>(null);
 
-// Initialize map service
-useEffect(() => {
-  const initMap = async () => {
-    if (!mapRef.current) return;
-    
-    const mapService = new MapService();
-    const initialized = await mapService.initialize(mapRef.current);
-    
-    if (initialized) {
-      setGoogleLoaded(true);
-      mapServiceRef.current = mapService;
+  // Initialize map service
+  useEffect(() => {
+    const initMap = async () => {
+      if (!mapRef.current) return;
       
-      // Setup direction changed listener
-      mapService.addDirectionsChangedListener(() => {
-        const updatedDirections = mapService.getDirections();
-        if (updatedDirections) {
-          processRouteData(updatedDirections);
+      const mapService = new MapService();
+      const initialized = await mapService.initialize(mapRef.current);
+      
+      if (initialized) {
+        setGoogleLoaded(true);
+        mapServiceRef.current = mapService;
+        
+        // Setup direction changed listener
+        mapService.addDirectionsChangedListener(() => {
+          const updatedDirections = mapService.getDirections();
+          if (updatedDirections) {
+            processRouteData(updatedDirections);
+          }
+        });
+        
+        // Initialize autocomplete fields
+        setupAutocompleteFields();
+        
+        // Initialize the LocationSelectorService for geozones
+        const locationService = LocationSelectorService.getInstance();
+        await locationService.initialize();
+        
+        // If editing existing route, calculate and display it
+        if (initialRoute && initialRoute.origin.lat && initialRoute.destination.lat) {
+          // Wait a bit for Google Maps to fully initialize
+          setTimeout(() => {
+            calculateRoute(true);
+          }, 500);
         }
-      });
-      
-      // Initialize autocomplete fields
-      setupAutocompleteFields();
-      
-      // Initialize the LocationSelectorService for geozones
-      const locationService = LocationSelectorService.getInstance();
-      await locationService.initialize();
-      
-      // If editing existing route, calculate and display it
-      if (initialRoute && initialRoute.origin.lat && initialRoute.destination.lat) {
-        // Wait a bit for Google Maps to fully initialize
-        setTimeout(() => {
-          calculateRoute(true);
-        }, 500);
       }
-    }
-  };
-  
-  initMap();
-}, []);
+    };
+    
+    initMap();
+  }, []);
 
   // Update to types to extend the Location interface
   useEffect(() => {
@@ -94,7 +94,8 @@ useEffect(() => {
           name: place.formatted_address || place.name || "",
           lat: place.geometry!.location!.lat(),
           lng: place.geometry!.location!.lng(),
-          isGeofenceEnabled: false
+          isGeofenceEnabled: false,
+          geofenceId: undefined // Clear geofenceId when selecting a place from autocomplete
         },
       }));
     });
@@ -107,7 +108,8 @@ useEffect(() => {
           name: place.formatted_address || place.name || "",
           lat: place.geometry!.location!.lat(),
           lng: place.geometry!.location!.lng(),
-          isGeofenceEnabled: false
+          isGeofenceEnabled: false,
+          geofenceId: undefined // Clear geofenceId when selecting a place from autocomplete
         },
       }));
     });
@@ -131,7 +133,8 @@ useEffect(() => {
         name: place.formatted_address || place.name || "",
         lat: place.geometry!.location!.lat(),
         lng: place.geometry!.location!.lng(),
-        isGeofenceEnabled: false
+        isGeofenceEnabled: false,
+        geofenceId: undefined // Clear geofenceId when selecting a place from autocomplete
       };
       setRoute((prev) => ({ ...prev, waypoints: newWaypoints }));
     });
@@ -336,17 +339,25 @@ useEffect(() => {
           name: processedData.originLocation.name,
           lat: processedData.originLocation.lat,
           lng: processedData.originLocation.lng,
+          // Preserve geofence data if available
+          isGeofenceEnabled: prev.origin.isGeofenceEnabled,
+          geofenceId: prev.origin.geofenceId,
+          geoCodeData: prev.origin.geoCodeData,
         },
         destination: {
           ...prev.destination,
           name: processedData.destinationLocation.name,
           lat: processedData.destinationLocation.lat,
           lng: processedData.destinationLocation.lng,
+          // Preserve geofence data if available
+          isGeofenceEnabled: prev.destination.isGeofenceEnabled,
+          geofenceId: prev.destination.geofenceId,
+          geoCodeData: prev.destination.geoCodeData,
         },
         waypoints: processedData.extractedWaypoints.map((wp: Location, i: number) => ({
           ...wp,
           isGeofenceEnabled: prev.waypoints[i]?.isGeofenceEnabled || false,
-          geozoneId: prev.waypoints[i]?.geozoneId,
+          geofenceId: prev.waypoints[i]?.geofenceId,
           geoCodeData: prev.waypoints[i]?.geoCodeData,
         })),
         path: processedData.pathCoords,
@@ -382,17 +393,34 @@ useEffect(() => {
         },
         origin: {
           ...prev.origin,
-          name: processedData.originLocation.name,
+          // Keep the original name if it's a geozone, otherwise use the geocoded name
+          name: prev.origin.isGeofenceEnabled ? prev.origin.name : processedData.originLocation.name,
           lat: processedData.originLocation.lat,
           lng: processedData.originLocation.lng,
+          // Preserve geofence data
+          isGeofenceEnabled: prev.origin.isGeofenceEnabled,
+          geofenceId: prev.origin.geofenceId,
+          geoCodeData: prev.origin.geoCodeData,
         },
         destination: {
           ...prev.destination,
-          name: processedData.destinationLocation.name,
+          // Keep the original name if it's a geozone, otherwise use the geocoded name
+          name: prev.destination.isGeofenceEnabled ? prev.destination.name : processedData.destinationLocation.name,
           lat: processedData.destinationLocation.lat,
           lng: processedData.destinationLocation.lng,
+          // Preserve geofence data
+          isGeofenceEnabled: prev.destination.isGeofenceEnabled,
+          geofenceId: prev.destination.geofenceId,
+          geoCodeData: prev.destination.geoCodeData,
         },
-        waypoints: customWaypoints, // Use custom waypoints
+        waypoints: customWaypoints.map((waypoint, index) => ({
+          ...waypoint,
+          // Ensure we preserve name for geofence waypoints
+          name: waypoint.isGeofenceEnabled ? waypoint.name : waypoint.name,
+          isGeofenceEnabled: waypoint.isGeofenceEnabled,
+          geofenceId: waypoint.geofenceId,
+          geoCodeData: waypoint.geoCodeData,
+        })),
         path: processedData.pathCoords,
       }));
     } catch (error) {
@@ -400,20 +428,136 @@ useEffect(() => {
     }
   };
 
-  const handleSave = () => {
-    // Make sure we have all required data
-    if (!route.name.trim()) {
-      alert("Please provide a name for the route");
-      return;
+  // Prepare route data for saving - strip out geoCodeData as requested
+// Helper function to extract the correct geofence ID from possibly complex object
+const extractGeofenceId = (geofenceId: any): string | undefined => {
+  if (!geofenceId) return undefined;
+  
+  // If it's a string, return it directly
+  if (typeof geofenceId === 'string') {
+    return geofenceId;
+  }
+  
+  // If it's an object with _id property, return that
+  if (typeof geofenceId === 'object' && geofenceId._id) {
+    return geofenceId._id;
+  }
+  
+  return undefined;
+};
+
+// Prepare route data for saving - properly handle complex geofenceId objects
+const prepareRouteForSave = (routeData: Route): Route => {
+  // Create a deep copy of the route
+  const preparedRoute :any= { ...routeData };
+  
+  // Process origin
+  if (preparedRoute.origin.isGeofenceEnabled) {
+    const geofenceId = extractGeofenceId(preparedRoute.origin.geofenceId);
+    
+    // If we found a valid ID, update the origin
+    if (geofenceId) {
+      // If geofenceId is an object with name, use that, otherwise try to get it from geozones
+      let geozoneName = '';
+      if (typeof preparedRoute.origin.geofenceId === 'object' && preparedRoute.origin.geofenceId.name) {
+        geozoneName = preparedRoute.origin.geofenceId.name;
+      } else {
+        const geozone = LocationSelectorService.getInstance().getGeozoneById(geofenceId);
+        if (geozone) {
+          geozoneName = geozone.name;
+        }
+      }
+      
+      preparedRoute.origin = {
+        ...preparedRoute.origin,
+        name: geozoneName, // Use the geozone name
+        geofenceId: geofenceId, // Use just the ID string
+        geoCodeData: undefined // Remove geoCodeData
+      };
+    }
+  }
+  
+  // Process destination
+  if (preparedRoute.destination.isGeofenceEnabled) {
+    const geofenceId = extractGeofenceId(preparedRoute.destination.geofenceId);
+    
+    // If we found a valid ID, update the destination
+    if (geofenceId) {
+      // If geofenceId is an object with name, use that, otherwise try to get it from geozones
+      let geozoneName = '';
+      if (typeof preparedRoute.destination.geofenceId === 'object' && preparedRoute.destination.geofenceId.name) {
+        geozoneName = preparedRoute.destination.geofenceId.name;
+      } else {
+        const geozone = LocationSelectorService.getInstance().getGeozoneById(geofenceId);
+        if (geozone) {
+          geozoneName = geozone.name;
+        }
+      }
+      
+      preparedRoute.destination = {
+        ...preparedRoute.destination,
+        name: geozoneName, // Use the geozone name
+        geofenceId: geofenceId, // Use just the ID string
+        geoCodeData: undefined // Remove geoCodeData
+      };
+    }
+  }
+  
+  // Process waypoints
+  preparedRoute.waypoints = routeData.waypoints.map((waypoint:any) => {
+    if (waypoint.isGeofenceEnabled) {
+      const geofenceId = extractGeofenceId(waypoint.geofenceId);
+      
+      // If we found a valid ID, update the waypoint
+      if (geofenceId) {
+        // If geofenceId is an object with name, use that, otherwise try to get it from geozones
+        let geozoneName = '';
+        if (typeof waypoint.geofenceId === 'object' && waypoint.geofenceId.name) {
+          geozoneName = waypoint.geofenceId.name;
+        } else {
+          const geozone = LocationSelectorService.getInstance().getGeozoneById(geofenceId);
+          if (geozone) {
+            geozoneName = geozone.name;
+          }
+        }
+        
+        return {
+          ...waypoint,
+          name: geozoneName, // Use the geozone name
+          geofenceId: geofenceId, // Use just the ID string
+          geoCodeData: undefined // Remove geoCodeData
+        };
+      }
     }
     
-    if (!route.origin.name || !route.destination.name) {
-      alert("Please provide both origin and destination");
-      return;
-    }
-    
-    onSave(route);
-  };
+    return {
+      ...waypoint,
+      geoCodeData: undefined // Remove geoCodeData for regular waypoints
+    };
+  });
+  
+  // Log the prepared route to help with debugging
+  console.log('Prepared route for saving:', preparedRoute);
+  
+  return preparedRoute;
+};
+
+const handleSave = () => {
+  // Make sure we have all required data
+  if (!route.name.trim()) {
+    alert("Please provide a name for the route");
+    return;
+  }
+  
+  if (!route.origin.name || !route.destination.name) {
+    alert("Please provide both origin and destination");
+    return;
+  }
+  
+  // Prepare the route by fixing geofenceId objects and removing geoCodeData
+  const preparedRoute = prepareRouteForSave(route);
+  onSave(preparedRoute);
+};
 
   const addWaypoint = () => {
     setRoute((prev) => ({
@@ -543,7 +687,7 @@ useEffect(() => {
                   waypoint={waypoint}
                   moveWaypoint={moveWaypoint}
                   onChange={(updatedWaypoint) => {
-                    const newWaypoints:any = [...route.waypoints];
+                    const newWaypoints = [...route.waypoints];
                     newWaypoints[index] = updatedWaypoint;
                     setRoute((prev) => ({ ...prev, waypoints: newWaypoints }));
                   }}

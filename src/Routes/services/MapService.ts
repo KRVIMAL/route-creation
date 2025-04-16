@@ -201,7 +201,7 @@ export class MapService {
     if (!this.mapInstance || !window.google || !location.isGeofenceEnabled || !location.geoCodeData) return null;
     
     // First, check if we already have a shape for this location and remove it if it exists
-    const locationId = location.geozoneId || `location-${Math.random()}`;
+    const locationId = location.geofenceId || `location-${Math.random()}`;
     if (this.geozoneShapes.has(locationId)) {
       const existingShape = this.geozoneShapes.get(locationId);
       if (existingShape) {

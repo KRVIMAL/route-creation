@@ -1,6 +1,6 @@
 import { Route, ApiResponse } from '../types';
 import axios from 'axios';
-const API_URL = 'http://192.168.1.36.:5678';
+const API_URL = 'http://localhost.:5678';
 const API_BASE_URL = 'http://localhost:9090';
 export const fetchRoutes = async (page: number, limit: number): Promise<Route[]> => {
   try {

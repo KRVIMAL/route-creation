@@ -1,4 +1,3 @@
-// types.ts
 export interface Coordinates {
   lat: number;
   lng: number;
@@ -7,8 +6,8 @@ export interface Coordinates {
 export interface Location extends Coordinates {
   name: string;
   isGeofenceEnabled?: boolean;
-  geozoneId?: string;
-  geoCodeData?: GeoCodeData;
+  geofenceId?: string; // Changed from geozoneId to geofenceId
+  geoCodeData?: GeoCodeData; // We'll still include this but won't send it to the backend
 }
 
 export interface DistanceDuration {
