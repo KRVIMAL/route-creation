@@ -1,8 +1,9 @@
 // WaypointItem.tsx
-import React, { useRef } from "react";
+import { useRef } from "react";
 import { FaTimes, FaGripVertical } from "react-icons/fa";
 import { useDrag, useDrop } from "react-dnd";
 import { Location } from "../types";
+import GeozoneSelector from "./GeozoneSelector";
 
 // Define the item type as a string constant
 export const WAYPOINT_TYPE = "waypoint";
@@ -12,7 +13,7 @@ interface WaypointItemProps {
   waypoint: Location;
   index: number;
   moveWaypoint: (dragIndex: number, hoverIndex: number) => void;
-  onChange: (value: string) => void;
+  onChange: (location: Location) => void;
   onRemove: () => void;
 }
 
@@ -75,25 +76,19 @@ const WaypointItem = ({
       </div>
       <div className="w-6 h-6 rounded-full bg-yellow-500 flex-shrink-0 mt-7 z-10"></div>
       <div className="ml-2 w-full">
-        <label htmlFor={`waypoint-input-${index}`} className="block mb-1 font-medium text-gray-700">
-          Via Destination
-        </label>
-        <div className="relative">
-          <input
-            id={`waypoint-input-${index}`}
-            type="text"
-            value={waypoint.name}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="Enter waypoint location"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button 
-            className="absolute right-2 top-2.5 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-600"
-            onClick={onRemove}
-          >
-            <FaTimes />
-          </button>
-        </div>
+        <GeozoneSelector
+          id={`waypoint-input-${index}`}
+          label="Via Destination"
+          location={waypoint}
+          onChange={onChange}
+          placeholder="Enter waypoint location"
+        />
+        <button 
+          className="absolute right-2 top-12 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-600"
+          onClick={onRemove}
+        >
+          <FaTimes />
+        </button>
       </div>
     </div>
   );

@@ -6,6 +6,9 @@ export interface Coordinates {
 
 export interface Location extends Coordinates {
   name: string;
+  isGeofenceEnabled?: boolean;
+  geozoneId?: string;
+  geoCodeData?: GeoCodeData;
 }
 
 export interface DistanceDuration {
@@ -26,6 +29,7 @@ export interface Route {
   path: Coordinates[];
   createdAt?: string;
   updatedAt?: string;
+  userId?: any;
 }
 
 export interface ApiResponse {
@@ -33,4 +37,49 @@ export interface ApiResponse {
   statusCode: number;
   message: string;
   data: Route | Route[];
+  total?: number;
+}
+
+export interface Geometry {
+  type: string;
+  coordinates: number[] | number[][];
+  radius?: number;
+}
+
+export interface GeoCodeData {
+  type: string;
+  geometry: Geometry;
+}
+
+export interface User {
+  _id: string;
+  fullName: string;
+  email: string;
+}
+
+export interface GeozoneData {
+  _id: string;
+  name: string;
+  finalAddress: string;
+  userId: User | string;
+  mobileNumber?: number | null;
+  address?: {
+    zipCode: string;
+    country: string;
+    state: string;
+    area: string;
+    city: string;
+    district: string;
+    _id?: string;
+  };
+  geoCodeData: GeoCodeData;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PaginationParams {
+  page: number;
+  limit: number;
+  searchText?: string;
 }

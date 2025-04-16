@@ -1,14 +1,15 @@
 // ViewRouteModal.tsx
 import React, { useEffect, useRef } from 'react';
-import { Route } from '../types';
 import { Loader } from '@googlemaps/js-api-loader';
 import '../../App.css';
 
 interface ViewRouteModalProps {
   isOpen: boolean;
   onClose: () => void;
-  route: Route;
+  route: any;
 }
+
+const API_KEY=import.meta.env.VITE_GOOGLE_MAP_API_KEY;
 
 const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route }) => {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -18,7 +19,7 @@ const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route 
     
     const initializeMap = async () => {
       const loader = new Loader({
-        apiKey: 'AIzaSyAaZ1M_ofwVoLohowruNhY0fyihH9NpcI0',
+        apiKey: API_KEY,
         version: 'weekly',
         libraries: ['places']
       });
@@ -31,6 +32,23 @@ const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route 
           zoom: 10
         });
         
+        // Display geozones if they exist
+        if (route.origin.isGeofenceEnabled && route.origin.geoCodeData) {
+          createGeozoneShape(mapInstance, google, route.origin);
+        }
+        
+        if (route.destination.isGeofenceEnabled && route.destination.geoCodeData) {
+          createGeozoneShape(mapInstance, google, route.destination);
+        }
+        
+        if (route.waypoints && route.waypoints.length > 0) {
+          route.waypoints.forEach((waypoint:any) => {
+            if (waypoint.isGeofenceEnabled && waypoint.geoCodeData) {
+              createGeozoneShape(mapInstance, google, waypoint);
+            }
+          });
+        }
+        
         const directionsService = new google.maps.DirectionsService();
         const directionsRenderer = new google.maps.DirectionsRenderer({
           map: mapInstance,
@@ -38,7 +56,7 @@ const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route 
         });
         
         // Prepare waypoints for DirectionsService
-        const waypoints = route.waypoints.map(wp => ({
+        const waypoints = route.waypoints.map((wp:any) => ({
           location: { lat: wp.lat, lng: wp.lng },
           stopover: true
         }));
@@ -71,6 +89,100 @@ const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route 
     
     initializeMap();
   }, [isOpen, route]);
+  
+  // Create a geozone shape on the map based on the location type
+  const createGeozoneShape = (map: google.maps.Map, google: any, location: any) => {
+    if (!location.geoCodeData) return null;
+    
+    const { geometry } = location.geoCodeData;
+    const { type, coordinates, radius } = geometry;
+    let shape: any = null;
+    
+    switch (type) {
+      case 'Circle':
+        shape = new google.maps.Circle({
+          center: { lat: coordinates[0], lng: coordinates[1] },
+          radius: radius || 100,
+          map,
+          fillColor: "#4285F4",
+          fillOpacity: 0.3,
+          strokeWeight: 2,
+          strokeColor: "#4285F4",
+        });
+        break;
+        
+      case 'Polygon':
+        shape = new google.maps.Polygon({
+          paths: coordinates?.map((coord: any) => ({ 
+            lat: coord[0], 
+            lng: coord[1] 
+          })),
+          map,
+          fillColor: "#4285F4",
+          fillOpacity: 0.3,
+          strokeWeight: 2,
+          strokeColor: "#4285F4",
+        });
+        break;
+        
+      case 'Polyline':
+        shape = new google.maps.Polyline({
+          path: coordinates?.map((coord: any) => ({ 
+            lat: coord[0], 
+            lng: coord[1] 
+          })),
+          map,
+          strokeColor: "#4285F4",
+          strokeWeight: 2,
+        });
+        break;
+        
+      case 'Rectangle':
+        const bounds = new google.maps.LatLngBounds(
+          new google.maps.LatLng(coordinates[1][0], coordinates[1][1]), // SW corner
+          new google.maps.LatLng(coordinates[0][0], coordinates[0][1])  // NE corner
+        );
+        
+        shape = new google.maps.Rectangle({
+          bounds: bounds,
+          map,
+          fillColor: "#4285F4",
+          fillOpacity: 0.3,
+          strokeWeight: 2,
+          strokeColor: "#4285F4",
+        });
+        break;
+        
+      case 'Point':
+        shape = new google.maps.Marker({
+          position: { lat: coordinates[0], lng: coordinates[1] },
+          map,
+          title: location.name,
+        });
+        break;
+    }
+    
+    if (shape) {
+      // Add info window
+      const infoWindow = new google.maps.InfoWindow({
+        content: `
+          <div>
+            <h3>${location.name}</h3>
+            ${type === "Circle" ? `<p>Radius: ${radius} meters</p>` : ""}
+          </div>
+        `,
+      });
+      
+      shape.addListener("click", (e: any) => {
+        infoWindow.setPosition(
+          type === "Point" ? shape?.getPosition() : e?.latLng
+        );
+        infoWindow.open(map);
+      });
+    }
+    
+    return shape;
+  };
   
   // Function to find the best matching route
   const findBestRouteMatch = (response: google.maps.DirectionsResult, savedPath: Array<{lat: number, lng: number}>): number => {
@@ -158,18 +270,30 @@ const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route 
             <div className="flex flex-col space-y-2">
               <div className="flex">
                 <span className="font-medium w-24">From:</span>
-                <span className="text-gray-700">{route.origin.name}</span>
+                <span className="text-gray-700">
+                  {route.origin.name} 
+                  {route.origin.isGeofenceEnabled && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">Geozone</span>}
+                </span>
               </div>
               <div className="flex">
                 <span className="font-medium w-24">To:</span>
-                <span className="text-gray-700">{route.destination.name}</span>
+                <span className="text-gray-700">
+                  {route.destination.name}
+                  {route.destination.isGeofenceEnabled && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">Geozone</span>}
+                </span>
               </div>
               {route.waypoints.length > 0 && (
                 <div className="flex">
                   <span className="font-medium w-24">Via:</span>
-                  <span className="text-gray-700">
-                    {route.waypoints.map(wp => wp.name).join(', ')}
-                  </span>
+                  <div className="text-gray-700">
+                    {route.waypoints.map((wp:any, index:any) => (
+                      <div key={index} className="flex items-center">
+                        {wp.name}
+                        {wp.isGeofenceEnabled && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">Geozone</span>}
+                        {index < route.waypoints.length - 1 && <span className="mx-1">,</span>}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

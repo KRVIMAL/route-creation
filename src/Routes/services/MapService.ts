@@ -12,17 +12,18 @@ export interface ProcessedRouteData {
   totalDistance: number;
   totalDuration: number;
 }
-const API_KEY=import.meta.env.VITE_GOOGLE_MAP_API_KEY;
+
 export class MapService {
   mapInstance: google.maps.Map | null = null;
   directionsService: google.maps.DirectionsService | null = null;
   directionsRenderer: google.maps.DirectionsRenderer | null = null;
   autocompleteInstances: Map<string, google.maps.places.Autocomplete> = new Map();
-
+  geozoneShapes: Map<string, google.maps.Circle | google.maps.Polygon | google.maps.Polyline | google.maps.Rectangle | google.maps.Marker> = new Map();
+  private API_KEY=import.meta.env.VITE_GOOGLE_MAP_API_KEY;
   async initialize(mapRef: HTMLDivElement): Promise<boolean> {
     try {
       const loader = new Loader({
-        apiKey: "AIzaSyAaZ1M_ofwVoLohowruNhY0fyihH9NpcI0", // Using the key directly as in original code
+        apiKey: this.API_KEY,
         version: "weekly",
         libraries: ["places"],
       });
@@ -193,6 +194,146 @@ export class MapService {
       ...result,
       extractedWaypoints: customWaypoints
     };
+  }
+  
+  // Function to display geozones on map
+  displayGeozone(location: Location): any {
+    if (!this.mapInstance || !window.google || !location.isGeofenceEnabled || !location.geoCodeData) return null;
+    
+    // First, check if we already have a shape for this location and remove it if it exists
+    const locationId = location.geozoneId || `location-${Math.random()}`;
+    if (this.geozoneShapes.has(locationId)) {
+      const existingShape = this.geozoneShapes.get(locationId);
+      if (existingShape) {
+        existingShape.setMap(null);
+      }
+      this.geozoneShapes.delete(locationId);
+    }
+    
+    const { geometry }:any = location.geoCodeData;
+    const { type, coordinates, radius } = geometry;
+    
+    let shape: any = null;
+    
+    switch (type) {
+      case "Circle":
+        shape = new window.google.maps.Circle({
+          center: { lat: coordinates[0], lng: coordinates[1] },
+          radius: radius || 100,
+          map: this.mapInstance,
+          fillColor: "#4285F4",
+          fillOpacity: 0.3,
+          strokeWeight: 2,
+          strokeColor: "#4285F4",
+        });
+        break;
+        
+      case "Polygon":
+        shape = new window.google.maps.Polygon({
+          paths: coordinates?.map((coord: any) => ({ 
+            lat: coord[0], 
+            lng: coord[1] 
+          })),
+          map: this.mapInstance,
+          fillColor: "#4285F4",
+          fillOpacity: 0.3,
+          strokeWeight: 2,
+          strokeColor: "#4285F4",
+        });
+        break;
+        
+      case "Polyline":
+        shape = new window.google.maps.Polyline({
+          path: coordinates?.map((coord: any) => ({ 
+            lat: coord[0], 
+            lng: coord[1] 
+          })),
+          map: this.mapInstance,
+          strokeColor: "#4285F4",
+          strokeWeight: 2,
+        });
+        break;
+        
+      case "Rectangle":
+        const bounds = new window.google.maps.LatLngBounds(
+          new window.google.maps.LatLng(coordinates[1][0], coordinates[1][1]), // SW corner
+          new window.google.maps.LatLng(coordinates[0][0], coordinates[0][1])  // NE corner
+        );
+        
+        shape = new window.google.maps.Rectangle({
+          bounds: bounds,
+          map: this.mapInstance,
+          fillColor: "#4285F4",
+          fillOpacity: 0.3,
+          strokeWeight: 2,
+          strokeColor: "#4285F4",
+        });
+        break;
+        
+      case "Point":
+        shape = new window.google.maps.Marker({
+          position: { lat: coordinates[0], lng: coordinates[1] },
+          map: this.mapInstance,
+          title: location.name,
+        });
+        break;
+    }
+    
+    if (shape) {
+      // Add info window
+      const infoWindow = new window.google.maps.InfoWindow({
+        content: `
+          <div>
+            <h3>${location.name}</h3>
+            ${type === "Circle" ? `<p>Radius: ${radius} meters</p>` : ""}
+          </div>
+        `,
+      });
+      
+      shape.addListener("click", (e: any) => {
+        infoWindow.setPosition(
+          type === "Point" ? shape?.getPosition() : e?.latLng
+        );
+        infoWindow.open(this.mapInstance);
+      });
+      
+      // Store the shape for later reference
+      this.geozoneShapes.set(locationId, shape);
+      
+      return shape;
+    }
+    
+    return null;
+  }
+  
+  // Display geozones for origin, destination, and all waypoints
+  displayAllGeozones(origin: Location, destination: Location, waypoints: Location[]): void {
+    // Clear any previous shapes
+    this.clearGeozones();
+    
+    if (origin.isGeofenceEnabled && origin.geoCodeData) {
+      this.displayGeozone(origin);
+    }
+    
+    if (destination.isGeofenceEnabled && destination.geoCodeData) {
+      this.displayGeozone(destination);
+    }
+    
+    waypoints.forEach(waypoint => {
+      if (waypoint.isGeofenceEnabled && waypoint.geoCodeData) {
+        this.displayGeozone(waypoint);
+      }
+    });
+  }
+  
+  // Clear all geozone shapes from the map
+  clearGeozones(): void {
+    this.geozoneShapes.forEach(shape => {
+      if (shape) {
+        shape.setMap(null);
+      }
+    });
+    this.geozoneShapes.clear();
   }
 
   setRouteIndex(index: number): void {

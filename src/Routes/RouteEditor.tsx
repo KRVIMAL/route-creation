@@ -8,6 +8,9 @@ import WaypointItem from "./component/WaypointItem";
 import MapService from "./services/MapService";
 import { TRAVEL_MODES, DEFAULT_ROUTE } from "./constants/RouteEditorConstants";
 import "../App.css";
+import LocationSelectorService from "./services/LocationSelectorService";
+import GeozoneSelector from "./component/GeozoneSelector";
+
 
 // Main RouteEditor component
 interface RouteEditorProps {
@@ -31,43 +34,47 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapServiceRef = useRef<MapService | null>(null);
 
-  // Initialize map service
-  useEffect(() => {
-    const initMap = async () => {
-      if (!mapRef.current) return;
-      
-      const mapService = new MapService();
-      const initialized = await mapService.initialize(mapRef.current);
-      
-      if (initialized) {
-        setGoogleLoaded(true);
-        mapServiceRef.current = mapService;
-        
-        // Setup direction changed listener
-        mapService.addDirectionsChangedListener(() => {
-          const updatedDirections = mapService.getDirections();
-          if (updatedDirections) {
-            processRouteData(updatedDirections);
-          }
-        });
-        
-        // Initialize autocomplete fields
-        setupAutocompleteFields();
-        
-        // If editing existing route, calculate and display it
-        if (initialRoute && initialRoute.origin.lat && initialRoute.destination.lat) {
-          // Wait a bit for Google Maps to fully initialize
-          setTimeout(() => {
-            calculateRoute(true);
-          }, 500);
-        }
-      }
-    };
+// Initialize map service
+useEffect(() => {
+  const initMap = async () => {
+    if (!mapRef.current) return;
     
-    initMap();
-  }, []);
+    const mapService = new MapService();
+    const initialized = await mapService.initialize(mapRef.current);
+    
+    if (initialized) {
+      setGoogleLoaded(true);
+      mapServiceRef.current = mapService;
+      
+      // Setup direction changed listener
+      mapService.addDirectionsChangedListener(() => {
+        const updatedDirections = mapService.getDirections();
+        if (updatedDirections) {
+          processRouteData(updatedDirections);
+        }
+      });
+      
+      // Initialize autocomplete fields
+      setupAutocompleteFields();
+      
+      // Initialize the LocationSelectorService for geozones
+      const locationService = LocationSelectorService.getInstance();
+      await locationService.initialize();
+      
+      // If editing existing route, calculate and display it
+      if (initialRoute && initialRoute.origin.lat && initialRoute.destination.lat) {
+        // Wait a bit for Google Maps to fully initialize
+        setTimeout(() => {
+          calculateRoute(true);
+        }, 500);
+      }
+    }
+  };
+  
+  initMap();
+}, []);
 
-  // Update autocomplete for dynamically added waypoints
+  // Update to types to extend the Location interface
   useEffect(() => {
     if (googleLoaded && route.waypoints.length > 0) {
       route.waypoints.forEach((_, idx) => {
@@ -80,25 +87,27 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
     if (!mapServiceRef.current) return;
     
     // Setup origin autocomplete
-    mapServiceRef.current.setupAutocomplete("origin-input", (place:any) => {
+    mapServiceRef.current.setupAutocomplete("origin-input", (place) => {
       setRoute((prev) => ({
         ...prev,
         origin: {
           name: place.formatted_address || place.name || "",
           lat: place.geometry!.location!.lat(),
           lng: place.geometry!.location!.lng(),
+          isGeofenceEnabled: false
         },
       }));
     });
     
     // Setup destination autocomplete
-    mapServiceRef.current.setupAutocomplete("destination-input", (place:any) => {
+    mapServiceRef.current.setupAutocomplete("destination-input", (place) => {
       setRoute((prev) => ({
         ...prev,
         destination: {
           name: place.formatted_address || place.name || "",
           lat: place.geometry!.location!.lat(),
           lng: place.geometry!.location!.lng(),
+          isGeofenceEnabled: false
         },
       }));
     });
@@ -116,12 +125,13 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
     
     const elementId = `waypoint-input-${index}`;
     
-    mapServiceRef.current.setupAutocomplete(elementId, (place:any) => {
+    mapServiceRef.current.setupAutocomplete(elementId, (place) => {
       const newWaypoints = [...route.waypoints];
-      newWaypoints[index] = {
+      newWaypoints[index] = { 
         name: place.formatted_address || place.name || "",
         lat: place.geometry!.location!.lat(),
         lng: place.geometry!.location!.lng(),
+        isGeofenceEnabled: false
       };
       setRoute((prev) => ({ ...prev, waypoints: newWaypoints }));
     });
@@ -149,7 +159,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
     }));
   };
 
-  const calculateRoute = (isInitialCalculation:any = false) => {
+  const calculateRoute = (isInitialCalculation = false) => {
     if (!mapServiceRef.current) return;
     
     if (!route.origin.name || !route.destination.name) {
@@ -162,17 +172,22 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
     // Make a copy of the current waypoints
     const currentWaypoints = [...route.waypoints];
 
+    // Display geozones on the map if they exist
+    if (mapServiceRef.current) {
+      mapServiceRef.current.displayAllGeozones(route.origin, route.destination, currentWaypoints);
+    }
+
     mapServiceRef.current.calculateRoute(
       route.origin,
       route.destination,
       currentWaypoints,
       route.travelMode,
-      (response:any) => {
+      (response) => {
         setIsLoading(false);
         setDirectionsResponse(response);
         
         // Generate route options for selection
-        const options = response.routes.map((route:any, index:any) => {
+        const options = response.routes.map((route:any, index) => {
           const distance = route.legs[0].distance.text;
           const duration = route.legs[0].duration.text;
           const summary = route.summary || `Route ${index + 1}`;
@@ -316,9 +331,24 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
           value: processedData.totalDuration, 
           text: processedData.durationText 
         },
-        origin: processedData.originLocation,
-        destination: processedData.destinationLocation,
-        waypoints: processedData.extractedWaypoints,
+        origin: {
+          ...prev.origin,
+          name: processedData.originLocation.name,
+          lat: processedData.originLocation.lat,
+          lng: processedData.originLocation.lng,
+        },
+        destination: {
+          ...prev.destination,
+          name: processedData.destinationLocation.name,
+          lat: processedData.destinationLocation.lat,
+          lng: processedData.destinationLocation.lng,
+        },
+        waypoints: processedData.extractedWaypoints.map((wp: Location, i: number) => ({
+          ...wp,
+          isGeofenceEnabled: prev.waypoints[i]?.isGeofenceEnabled || false,
+          geozoneId: prev.waypoints[i]?.geozoneId,
+          geoCodeData: prev.waypoints[i]?.geoCodeData,
+        })),
         path: processedData.pathCoords,
       }));
     } catch (error) {
@@ -350,8 +380,18 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
           value: processedData.totalDuration, 
           text: processedData.durationText 
         },
-        origin: processedData.originLocation,
-        destination: processedData.destinationLocation,
+        origin: {
+          ...prev.origin,
+          name: processedData.originLocation.name,
+          lat: processedData.originLocation.lat,
+          lng: processedData.originLocation.lng,
+        },
+        destination: {
+          ...prev.destination,
+          name: processedData.destinationLocation.name,
+          lat: processedData.destinationLocation.lat,
+          lng: processedData.destinationLocation.lng,
+        },
         waypoints: customWaypoints, // Use custom waypoints
         path: processedData.pathCoords,
       }));
@@ -378,7 +418,12 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
   const addWaypoint = () => {
     setRoute((prev) => ({
       ...prev,
-      waypoints: [...prev.waypoints, { name: "", lat: 0, lng: 0 }],
+      waypoints: [...prev.waypoints, { 
+        name: "", 
+        lat: 0, 
+        lng: 0,
+        isGeofenceEnabled: false 
+      }],
     }));
   };
 
@@ -425,7 +470,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
           // Process with custom waypoints
           processRouteDataWithCustomWaypoints(response, 0, newWaypoints);
         },
-        (status:any) => {
+        (status) => {
           setIsLoading(false);
           alert(`Directions request failed due to ${status}`);
         }
@@ -472,29 +517,21 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
             </div>
             
             <div className="mb-5 relative">
-              {/* Source point with blue marker */}
+              {/* Source */}
               <div className="flex items-start mb-4 relative">
                 {/* Vertical line connecting points */}
                 <div className="absolute left-3 top-6 bottom-0 w-0.5 bg-gray-300 z-0"></div>
                 
                 <div className="w-6 h-6 rounded-full bg-blue-500 flex-shrink-0 mt-7 z-10"></div>
                 <div className="ml-2 w-full">
-                  <label htmlFor="origin-input" className="block mb-1 font-medium text-gray-700">Source *</label>
-                  <div className="relative">
-                    <input
-                      id="origin-input"
-                      type="text"
-                      value={route.origin.name}
-                      onChange={(e) =>
-                        setRoute((prev) => ({
-                          ...prev,
-                          origin: { ...prev.origin, name: e.target.value },
-                        }))
-                      }
-                      placeholder="Enter origin location"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                  <GeozoneSelector
+                    id="origin-input"
+                    label="Source *"
+                    location={route.origin}
+                    onChange={(location:any) => setRoute(prev => ({ ...prev, origin: location }))}
+                    placeholder="Enter origin location"
+                    isRequired={true}
+                  />
                 </div>
               </div>
               
@@ -505,38 +542,27 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
                   index={index}
                   waypoint={waypoint}
                   moveWaypoint={moveWaypoint}
-                  onChange={(value:any) => {
-                    const newWaypoints = [...route.waypoints];
-                    newWaypoints[index] = { ...waypoint, name: value };
+                  onChange={(updatedWaypoint) => {
+                    const newWaypoints:any = [...route.waypoints];
+                    newWaypoints[index] = updatedWaypoint;
                     setRoute((prev) => ({ ...prev, waypoints: newWaypoints }));
                   }}
                   onRemove={() => removeWaypoint(index)}
                 />
               ))}
               
-              {/* Destination point with green marker */}
+              {/* Destination */}
               <div className="flex items-start mb-4 relative">
                 <div className="w-6 h-6 rounded-full bg-green-500 flex-shrink-0 mt-7 z-10"></div>
                 <div className="ml-2 w-full">
-                  <label htmlFor="destination-input" className="block mb-1 font-medium text-gray-700">Destination *</label>
-                  <div className="relative">
-                    <input
-                      id="destination-input"
-                      type="text"
-                      value={route.destination.name}
-                      onChange={(e) =>
-                        setRoute((prev) => ({
-                          ...prev,
-                          destination: {
-                            ...prev.destination,
-                            name: e.target.value,
-                          },
-                        }))
-                      }
-                      placeholder="Enter destination location"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                  <GeozoneSelector
+                    id="destination-input"
+                    label="Destination *"
+                    location={route.destination}
+                    onChange={(location:any) => setRoute(prev => ({ ...prev, destination: location }))}
+                    placeholder="Enter destination location"
+                    isRequired={true}
+                  />
                 </div>
               </div>
               
@@ -562,7 +588,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {TRAVEL_MODES.map((mode:any) => (
+                {TRAVEL_MODES.map((mode) => (
                   <option key={mode.value} value={mode.value}>
                     {mode.label}
                   </option>
@@ -606,7 +632,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
               </button>
               <button
                 className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={calculateRoute}
+                onClick={() => calculateRoute(false)}
                 disabled={isLoading}
               >
                 {isLoading ? "Loading..." : "Calculate Route"}
@@ -627,5 +653,8 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
           </div>
         </div>
       </div>
-    </DndProvider>);};
-    export default RouteEditor;
+    </DndProvider>
+  );
+};
+
+export default RouteEditor;
