@@ -367,66 +367,98 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
     }
   };
 
-  const processRouteDataWithCustomWaypoints = (
-    response: any,
-    routeIndex = selectedRouteIndex,
-    customWaypoints: Location[] = []
-  ) => {
-    if (!mapServiceRef.current) return;
+// Update this method in RouteEditor.tsx to preserve geoCodeData
+
+// Add this helper function to the RouteEditor component
+const ensureGeoCodeData = (location: Location): Location => {
+  if (location.isGeofenceEnabled && !location.geoCodeData && location.geofenceId) {
+    // Use type assertion to tell TypeScript that geofenceId has _id property when it's an object
+    const geofenceId = typeof location.geofenceId === 'object' && location.geofenceId !== null
+      ? (location.geofenceId as { _id: string })._id 
+      : location.geofenceId as string;
     
-    try {
-      const processedData = mapServiceRef.current.processRouteDataWithCustomWaypoints(
-        response, 
-        routeIndex, 
-        customWaypoints
-      );
-      
-      setRoute((prev) => ({
-        ...prev,
-        distance: { 
-          value: processedData.totalDistance, 
-          text: processedData.distanceText 
-        },
-        duration: { 
-          value: processedData.totalDuration, 
-          text: processedData.durationText 
-        },
-        origin: {
-          ...prev.origin,
-          // Keep the original name if it's a geozone, otherwise use the geocoded name
-          name: prev.origin.isGeofenceEnabled ? prev.origin.name : processedData.originLocation.name,
-          lat: processedData.originLocation.lat,
-          lng: processedData.originLocation.lng,
-          // Preserve geofence data
-          isGeofenceEnabled: prev.origin.isGeofenceEnabled,
-          geofenceId: prev.origin.geofenceId,
-          geoCodeData: prev.origin.geoCodeData,
-        },
-        destination: {
-          ...prev.destination,
-          // Keep the original name if it's a geozone, otherwise use the geocoded name
-          name: prev.destination.isGeofenceEnabled ? prev.destination.name : processedData.destinationLocation.name,
-          lat: processedData.destinationLocation.lat,
-          lng: processedData.destinationLocation.lng,
-          // Preserve geofence data
-          isGeofenceEnabled: prev.destination.isGeofenceEnabled,
-          geofenceId: prev.destination.geofenceId,
-          geoCodeData: prev.destination.geoCodeData,
-        },
-        waypoints: customWaypoints.map((waypoint, index) => ({
-          ...waypoint,
-          // Ensure we preserve name for geofence waypoints
-          name: waypoint.isGeofenceEnabled ? waypoint.name : waypoint.name,
-          isGeofenceEnabled: waypoint.isGeofenceEnabled,
-          geofenceId: waypoint.geofenceId,
-          geoCodeData: waypoint.geoCodeData,
-        })),
-        path: processedData.pathCoords,
-      }));
-    } catch (error) {
-      console.error("Error processing route data with custom waypoints:", error);
+    const locationService = LocationSelectorService.getInstance();
+    const geozone = locationService.getGeozoneById(geofenceId);
+    
+    if (geozone && geozone.geoCodeData) {
+      return {
+        ...location,
+        geoCodeData: geozone.geoCodeData,
+        name: location.name || geozone.name
+      };
     }
-  };
+  }
+  return location;
+};
+
+// Then update the processRouteDataWithCustomWaypoints method
+const processRouteDataWithCustomWaypoints = (
+  response: any,
+  routeIndex = selectedRouteIndex,
+  customWaypoints: Location[] = []
+) => {
+  if (!mapServiceRef.current) return;
+  
+  try {
+    const processedData = mapServiceRef.current.processRouteDataWithCustomWaypoints(
+      response, 
+      routeIndex, 
+      customWaypoints
+    );
+    
+    // First ensure that any locations with geofenceId have their geoCodeData
+    let updatedOrigin = ensureGeoCodeData(route.origin);
+    let updatedDestination = ensureGeoCodeData(route.destination);
+    let updatedWaypoints = customWaypoints.map(wp => ensureGeoCodeData(wp));
+    
+    setRoute((prev) => ({
+      ...prev,
+      distance: { 
+        value: processedData.totalDistance, 
+        text: processedData.distanceText 
+      },
+      duration: { 
+        value: processedData.totalDuration, 
+        text: processedData.durationText 
+      },
+      origin: {
+        ...updatedOrigin,
+        // Keep the original name if it's a geozone, otherwise use the geocoded name
+        name: updatedOrigin.isGeofenceEnabled ? updatedOrigin.name : processedData.originLocation.name,
+        lat: processedData.originLocation.lat,
+        lng: processedData.originLocation.lng,
+      },
+      destination: {
+        ...updatedDestination,
+        // Keep the original name if it's a geozone, otherwise use the geocoded name
+        name: updatedDestination.isGeofenceEnabled ? updatedDestination.name : processedData.destinationLocation.name,
+        lat: processedData.destinationLocation.lat,
+        lng: processedData.destinationLocation.lng,
+      },
+      waypoints: updatedWaypoints.map((waypoint, index) => ({
+        ...waypoint,
+        // Ensure we preserve name for geofence waypoints
+        name: waypoint.isGeofenceEnabled ? waypoint.name : waypoint.name,
+      })),
+      path: processedData.pathCoords,
+    }));
+    
+    // After updating the route state, redisplay geozones
+    if (mapServiceRef.current) {
+      setTimeout(() => {
+        if (mapServiceRef.current) {
+          mapServiceRef.current.displayAllGeozones(
+            updatedOrigin, 
+            updatedDestination, 
+            updatedWaypoints
+          );
+        }
+      }, 500); // Small delay to ensure state has updated
+    }
+  } catch (error) {
+    console.error("Error processing route data with custom waypoints:", error);
+  }
+};
 
   // Prepare route data for saving - strip out geoCodeData as requested
 // Helper function to extract the correct geofence ID from possibly complex object

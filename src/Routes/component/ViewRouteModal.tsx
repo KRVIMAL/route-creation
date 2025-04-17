@@ -1,6 +1,7 @@
 // ViewRouteModal.tsx
 import React, { useEffect, useRef } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
+import LocationSelectorService from '../services/LocationSelectorService';
 import '../../App.css';
 
 interface ViewRouteModalProps {
@@ -13,9 +14,64 @@ const API_KEY=import.meta.env.VITE_GOOGLE_MAP_API_KEY;
 
 const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route }) => {
   const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const shapesRef = useRef<Array<google.maps.Circle | google.maps.Polygon | google.maps.Polyline | google.maps.Rectangle | google.maps.Marker>>([]);
+  
+  // Clean up function to remove all shapes and clear references
+  const cleanupMap = () => {
+    if (shapesRef.current.length > 0) {
+      shapesRef.current.forEach(shape => {
+        if (shape) {
+          shape.setMap(null);
+        }
+      });
+      shapesRef.current = [];
+    }
+    
+    mapInstanceRef.current = null;
+  };
+  
+  // Extract geofenceId from possibly complex object
+  const getGeofenceId = (geofenceId: any): string | undefined => {
+    if (!geofenceId) return undefined;
+    
+    if (typeof geofenceId === 'object' && geofenceId !== null && geofenceId._id) {
+      return geofenceId._id;
+    }
+    
+    return geofenceId as string;
+  };
+
+  // Ensure location has geoCodeData if it has geofenceId
+  const ensureGeoCodeData = async (location: any): Promise<any> => {
+    if (!location) return location;
+    
+    if (location.isGeofenceEnabled && !location.geoCodeData && location.geofenceId) {
+      const locationService = LocationSelectorService.getInstance();
+      await locationService.initialize();
+      
+      const geofenceId = getGeofenceId(location.geofenceId);
+      
+      if (geofenceId) {
+        const geozone = locationService.getGeozoneById(geofenceId);
+        
+        if (geozone && geozone.geoCodeData) {
+          return {
+            ...location,
+            geoCodeData: geozone.geoCodeData,
+          };
+        }
+      }
+    }
+    
+    return location;
+  };
   
   useEffect(() => {
-    if (!isOpen || !mapRef.current) return;
+    if (!isOpen || !mapRef.current || !route) return;
+    
+    // Clean up previous map
+    cleanupMap();
     
     const initializeMap = async () => {
       const loader = new Loader({
@@ -27,24 +83,46 @@ const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route 
       try {
         const google = await loader.load();
         
+        // Initialize LocationSelectorService
+        const locationService = LocationSelectorService.getInstance();
+        await locationService.initialize();
+        
+        // Process locations to ensure they have geoCodeData
+        let updatedOrigin = await ensureGeoCodeData(route.origin);
+        let updatedDestination = await ensureGeoCodeData(route.destination);
+        let updatedWaypoints = [];
+        
+        if (route.waypoints && route.waypoints.length > 0) {
+          updatedWaypoints = await Promise.all(
+            route.waypoints.map((waypoint: any) => ensureGeoCodeData(waypoint))
+          );
+        }
+
+        // Create map
         const mapInstance = new google.maps.Map(mapRef.current!, {
-          center: { lat: route.origin.lat, lng: route.origin.lng },
+          center: { lat: updatedOrigin.lat, lng: updatedOrigin.lng },
           zoom: 10
         });
         
+        // Save ref to map instance
+        mapInstanceRef.current = mapInstance;
+        
         // Display geozones if they exist
-        if (route.origin.isGeofenceEnabled && route.origin.geoCodeData) {
-          createGeozoneShape(mapInstance, google, route.origin);
+        if (updatedOrigin.isGeofenceEnabled && updatedOrigin.geoCodeData) {
+          const shape = createGeozoneShape(mapInstance, google, updatedOrigin);
+          if (shape) shapesRef.current.push(shape);
         }
         
-        if (route.destination.isGeofenceEnabled && route.destination.geoCodeData) {
-          createGeozoneShape(mapInstance, google, route.destination);
+        if (updatedDestination.isGeofenceEnabled && updatedDestination.geoCodeData) {
+          const shape = createGeozoneShape(mapInstance, google, updatedDestination);
+          if (shape) shapesRef.current.push(shape);
         }
         
-        if (route.waypoints && route.waypoints.length > 0) {
-          route.waypoints.forEach((waypoint:any) => {
+        if (updatedWaypoints.length > 0) {
+          updatedWaypoints.forEach((waypoint: any) => {
             if (waypoint.isGeofenceEnabled && waypoint.geoCodeData) {
-              createGeozoneShape(mapInstance, google, waypoint);
+              const shape = createGeozoneShape(mapInstance, google, waypoint);
+              if (shape) shapesRef.current.push(shape);
             }
           });
         }
@@ -56,20 +134,20 @@ const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route 
         });
         
         // Prepare waypoints for DirectionsService
-        const waypoints = route.waypoints.map((wp:any) => ({
+        const waypoints = updatedWaypoints.map((wp: any) => ({
           location: { lat: wp.lat, lng: wp.lng },
           stopover: true
         }));
         
         const request: google.maps.DirectionsRequest = {
-          origin: { lat: route.origin.lat, lng: route.origin.lng },
-          destination: { lat: route.destination.lat, lng: route.destination.lng },
+          origin: { lat: updatedOrigin.lat, lng: updatedOrigin.lng },
+          destination: { lat: updatedDestination.lat, lng: updatedDestination.lng },
           waypoints: waypoints,
           travelMode: route.travelMode as unknown as google.maps.TravelMode,
           provideRouteAlternatives: true // Get alternative routes
         };
         
-        directionsService.route(request, (response:any, status) => {
+        directionsService.route(request, (response: any, status) => {
           if (status === 'OK') {
             directionsRenderer.setDirections(response);
             
@@ -88,100 +166,108 @@ const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route 
     };
     
     initializeMap();
+    
+    // Clean up on component unmount or modal close
+    return cleanupMap;
   }, [isOpen, route]);
   
   // Create a geozone shape on the map based on the location type
   const createGeozoneShape = (map: google.maps.Map, google: any, location: any) => {
     if (!location.geoCodeData) return null;
     
-    const { geometry } = location.geoCodeData;
-    const { type, coordinates, radius } = geometry;
-    let shape: any = null;
-    
-    switch (type) {
-      case 'Circle':
-        shape = new google.maps.Circle({
-          center: { lat: coordinates[0], lng: coordinates[1] },
-          radius: radius || 100,
-          map,
-          fillColor: "#4285F4",
-          fillOpacity: 0.3,
-          strokeWeight: 2,
-          strokeColor: "#4285F4",
-        });
-        break;
-        
-      case 'Polygon':
-        shape = new google.maps.Polygon({
-          paths: coordinates?.map((coord: any) => ({ 
-            lat: coord[0], 
-            lng: coord[1] 
-          })),
-          map,
-          fillColor: "#4285F4",
-          fillOpacity: 0.3,
-          strokeWeight: 2,
-          strokeColor: "#4285F4",
-        });
-        break;
-        
-      case 'Polyline':
-        shape = new google.maps.Polyline({
-          path: coordinates?.map((coord: any) => ({ 
-            lat: coord[0], 
-            lng: coord[1] 
-          })),
-          map,
-          strokeColor: "#4285F4",
-          strokeWeight: 2,
-        });
-        break;
-        
-      case 'Rectangle':
-        const bounds = new google.maps.LatLngBounds(
-          new google.maps.LatLng(coordinates[1][0], coordinates[1][1]), // SW corner
-          new google.maps.LatLng(coordinates[0][0], coordinates[0][1])  // NE corner
-        );
-        
-        shape = new google.maps.Rectangle({
-          bounds: bounds,
-          map,
-          fillColor: "#4285F4",
-          fillOpacity: 0.3,
-          strokeWeight: 2,
-          strokeColor: "#4285F4",
-        });
-        break;
-        
-      case 'Point':
-        shape = new google.maps.Marker({
-          position: { lat: coordinates[0], lng: coordinates[1] },
-          map,
-          title: location.name,
-        });
-        break;
-    }
-    
-    if (shape) {
-      // Add info window
-      const infoWindow = new google.maps.InfoWindow({
-        content: `
-          <div>
-            <h3>${location.name}</h3>
-            ${type === "Circle" ? `<p>Radius: ${radius} meters</p>` : ""}
-          </div>
-        `,
-      });
+    try {
+      const { geometry } = location.geoCodeData;
+      const { type, coordinates, radius } = geometry;
+      let shape: any = null;
       
-      shape.addListener("click", (e: any) => {
-        infoWindow.setPosition(
-          type === "Point" ? shape?.getPosition() : e?.latLng
-        );
-        infoWindow.open(map);
-      });
+      switch (type) {
+        case 'Circle':
+          shape = new google.maps.Circle({
+            center: { lat: coordinates[0], lng: coordinates[1] },
+            radius: radius || 100,
+            map,
+            fillColor: "#4285F4",
+            fillOpacity: 0.3,
+            strokeWeight: 2,
+            strokeColor: "#4285F4",
+          });
+          break;
+          
+        case 'Polygon':
+          shape = new google.maps.Polygon({
+            paths: coordinates?.map((coord: any) => ({ 
+              lat: coord[0], 
+              lng: coord[1] 
+            })),
+            map,
+            fillColor: "#4285F4",
+            fillOpacity: 0.3,
+            strokeWeight: 2,
+            strokeColor: "#4285F4",
+          });
+          break;
+          
+        case 'Polyline':
+          shape = new google.maps.Polyline({
+            path: coordinates?.map((coord: any) => ({ 
+              lat: coord[0], 
+              lng: coord[1] 
+            })),
+            map,
+            strokeColor: "#4285F4",
+            strokeWeight: 2,
+          });
+          break;
+          
+        case 'Rectangle':
+          const bounds = new google.maps.LatLngBounds(
+            new google.maps.LatLng(coordinates[1][0], coordinates[1][1]), // SW corner
+            new google.maps.LatLng(coordinates[0][0], coordinates[0][1])  // NE corner
+          );
+          
+          shape = new google.maps.Rectangle({
+            bounds: bounds,
+            map,
+            fillColor: "#4285F4",
+            fillOpacity: 0.3,
+            strokeWeight: 2,
+            strokeColor: "#4285F4",
+          });
+          break;
+          
+        case 'Point':
+          shape = new google.maps.Marker({
+            position: { lat: coordinates[0], lng: coordinates[1] },
+            map,
+            title: location.name,
+          });
+          break;
+      }
+      
+      if (shape) {
+        // Add info window
+        const infoWindow = new google.maps.InfoWindow({
+          content: `
+            <div>
+              <h3>${location.name}</h3>
+              ${type === "Circle" ? `<p>Radius: ${radius} meters</p>` : ""}
+            </div>
+          `,
+        });
+        
+        shape.addListener("click", (e: any) => {
+          infoWindow.setPosition(
+            type === "Point" ? shape?.getPosition() : e?.latLng
+          );
+          infoWindow.open(map);
+        });
+      }
+      
+      return shape;
+    } catch (error) {
+      console.error("Error creating geozone shape:", error);
+      return null;
     }
-    
-    return shape;
   };
   
   // Function to find the best matching route
@@ -250,6 +336,12 @@ const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route 
     return R * c;
   };
   
+  // Handle close with proper cleanup
+  const handleClose = () => {
+    cleanupMap();
+    onClose();
+  };
+  
   if (!isOpen) return null;
   
   return (
@@ -259,7 +351,7 @@ const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route 
           <h3 className="text-lg font-semibold">{route.name}</h3>
           <button 
             className="text-2xl font-medium text-gray-500 hover:text-gray-700"
-            onClick={onClose}
+            onClick={handleClose}
           >
             ×
           </button>
@@ -286,7 +378,7 @@ const ViewRouteModal: React.FC<ViewRouteModalProps> = ({ isOpen, onClose, route 
                 <div className="flex">
                   <span className="font-medium w-24">Via:</span>
                   <div className="text-gray-700">
-                    {route.waypoints.map((wp:any, index:any) => (
+                    {route.waypoints.map((wp: any, index: any) => (
                       <div key={index} className="flex items-center">
                         {wp.name}
                         {wp.isGeofenceEnabled && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">Geozone</span>}
