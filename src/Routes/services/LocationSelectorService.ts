@@ -31,20 +31,21 @@ class LocationSelectorService {
     return LocationSelectorService.instance;
   }
 
-  public async initialize(): Promise<void> {
-    if (this.isInitialized) return;
-    
-    try {
-      this.isLoading = true;
-      const data = await fetchGeofences();
-      this.geozones = data;
-      this.isInitialized = true;
-    } catch (error) {
-      console.error('Error initializing location selector service:', error);
-    } finally {
-      this.isLoading = false;
-    }
+// In LocationSelectorService.ts
+public async initialize(forceRefresh: boolean = false): Promise<void> {
+  if (this.isInitialized && !forceRefresh) return;
+  
+  try {
+    this.isLoading = true;
+    const data = await fetchGeofences();
+    this.geozones = data;
+    this.isInitialized = true;
+  } catch (error) {
+    console.error('Error initializing location selector service:', error);
+  } finally {
+    this.isLoading = false;
   }
+}
 
   public getGeozones(): GeozoneData[] {
     return this.geozones;

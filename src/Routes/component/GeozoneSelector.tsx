@@ -95,6 +95,48 @@ const GeozoneSelector: React.FC<GeozoneSelectorProps> = ({
     }
   }, [location.geofenceId, location.isGeofenceEnabled, id]);
 
+  // Listen for newly created geofences that should be selected
+  useEffect(() => {
+    const handleGeofenceCreated = (event: CustomEvent) => {
+      const { locationType, geofenceId } = event.detail;
+      const selectorType = id.replace("-input", "");
+      
+      // Check if this event is for our location type
+      if (selectorType === locationType || 
+          (locationType.startsWith('waypoint-') && selectorType.startsWith('waypoint-'))) {
+        console.log(`Geofence created event received for ${locationType}, this selector is ${selectorType}`);
+        
+        // Reload the geozones list
+        const updateGeozones = async () => {
+          setLoading(true);
+          await locationService.initialize(true); // Force refresh
+          const refreshedGeozones = locationService.getGeozones();
+          setGeozones(refreshedGeozones);
+          
+          // Find the newly created geofence
+          const newGeozone = refreshedGeozones.find(g => g._id === geofenceId);
+          if (newGeozone) {
+            console.log('Found newly created geozone:', newGeozone);
+            // Switch to geozone mode
+            setIsGeozoneMode(true);
+          }
+          
+          setLoading(false);
+        };
+        
+        updateGeozones();
+      }
+    };
+    
+    // Add event listener
+    document.addEventListener('geofence-created', handleGeofenceCreated as EventListener);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('geofence-created', handleGeofenceCreated as EventListener);
+    };
+  }, [id]);
+
   // Get the actual geofence ID value regardless of whether it's an object or string
   const getGeofenceId = () => {
     if (!location.geofenceId) return '';
@@ -145,6 +187,15 @@ const GeozoneSelector: React.FC<GeozoneSelectorProps> = ({
       const newLocation = locationService.createLocationFromGeozone(geozone);
       console.log('Created location from geozone:', newLocation);
       onChange(newLocation);
+      
+      // Dispatch a custom event for the geozone selection
+      const geozoneSelectedEvent = new CustomEvent("geozone-selected", {
+        detail: {
+          locationType: id.replace("-input", ""),
+          location: newLocation
+        }
+      });
+      document.dispatchEvent(geozoneSelectedEvent);
     }
   };
 
