@@ -1,5 +1,5 @@
-// WaypointItem.tsx
-import { useRef } from "react";
+// WaypointItem.tsx - Updated for marker display
+import React, { useEffect, useRef } from "react";
 import { FaTimes, FaGripVertical } from "react-icons/fa";
 import { useDrag, useDrop } from "react-dnd";
 import { Location } from "../types";
@@ -42,7 +42,6 @@ const WaypointItem = ({
       if (!ref.current) {
         return;
       }
-      
       const dragIndex = item.index;
       const hoverIndex = index;
       
@@ -63,6 +62,25 @@ const WaypointItem = ({
   // Connect the drag and drop refs (order matters)
   drag(drop(ref));
   
+  // Handle waypoint changes
+  const handleWaypointChange = (location: Location) => {
+    onChange(location);
+    
+    // Dispatch a custom event when location selected manually (not via autocomplete)
+    if (location.lat && location.lng) {
+      const locationType = `waypoint-${index}`;
+      
+      const waypointChangedEvent = new CustomEvent("location-selected", {
+        detail: {
+          locationType,
+          location
+        }
+      });
+      
+      document.dispatchEvent(waypointChangedEvent);
+    }
+  };
+  
   return (
     <div
       ref={ref}
@@ -80,10 +98,10 @@ const WaypointItem = ({
           id={`waypoint-input-${index}`}
           label="Via Destination"
           location={waypoint}
-          onChange={onChange}
+          onChange={handleWaypointChange}
           placeholder="Enter waypoint location"
         />
-        <button 
+        <button
           className="absolute right-2 top-12 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-600"
           onClick={onRemove}
         >

@@ -246,7 +246,7 @@ const RouteTable: React.FC<RouteTableProps> = ({
                     <TruncatedCell content={route.name} maxLength={25} />
                   </td>
                   <td className="py-3 px-4">
-                    <TruncatedCell content={route.userId.fullName} maxLength={25} />
+                    <TruncatedCell content={route?.userId?.fullName} maxLength={25} />
                   </td>
                   <td className="py-3 px-4">
                     <TruncatedCell content={route.routeId} maxLength={15} />
