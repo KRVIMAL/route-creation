@@ -288,7 +288,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
     if (!mapServiceRef.current) return;
 
     // Setup origin autocomplete
-    mapServiceRef.current.setupAutocomplete("origin-input", (place) => {
+    mapServiceRef.current.setupAutocomplete("origin-input", (place:any) => {
       const newOrigin = {
         name: place.formatted_address || place.name || "",
         lat: place.geometry!.location!.lat(),
@@ -309,7 +309,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
     });
 
     // Setup destination autocomplete
-    mapServiceRef.current.setupAutocomplete("destination-input", (place) => {
+    mapServiceRef.current.setupAutocomplete("destination-input", (place:any) => {
       const newDestination = {
         name: place.formatted_address || place.name || "",
         lat: place.geometry!.location!.lat(),
@@ -342,7 +342,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
 
     const elementId = `waypoint-input-${index}`;
 
-    mapServiceRef.current.setupAutocomplete(elementId, (place) => {
+    mapServiceRef.current.setupAutocomplete(elementId, (place:any) => {
       const newWaypoint = {
         name: place.formatted_address || place.name || "",
         lat: place.geometry!.location!.lat(),
@@ -370,45 +370,49 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
   };
 
   // Move waypoint from one index to another
-  const moveWaypoint = (dragIndex: number, hoverIndex: number) => {
-    // Create a new array to avoid mutating state directly
-    const updatedWaypoints = [...route.waypoints];
+// In RouteEditor.tsx, update the moveWaypoint function:
 
-    // Remove the item from its original position
-    const draggedItem = updatedWaypoints[dragIndex];
+const moveWaypoint = (dragIndex: number, hoverIndex: number) => {
+  // Create a new array to avoid mutating state directly
+  const updatedWaypoints = [...route.waypoints];
 
-    // Don't proceed if the item doesn't exist
-    if (!draggedItem) return;
+  // Remove the item from its original position
+  const draggedItem = updatedWaypoints[dragIndex];
 
-    // Remove from original position and insert at new position
-    updatedWaypoints.splice(dragIndex, 1);
-    updatedWaypoints.splice(hoverIndex, 0, draggedItem);
+  // Don't proceed if the item doesn't exist
+  if (!draggedItem) return;
 
-    // Update the state with the new array
-    setRoute((prev) => ({
-      ...prev,
-      waypoints: updatedWaypoints,
-    }));
+  // Remove from original position and insert at new position
+  updatedWaypoints.splice(dragIndex, 1);
+  updatedWaypoints.splice(hoverIndex, 0, draggedItem);
 
-    // Update markers after reordering
-    if (mapServiceRef.current) {
-      // Clear all waypoint markers
-      for (
-        let i = 0;
-        i < Math.max(updatedWaypoints.length, route.waypoints.length);
-        i++
-      ) {
-        mapServiceRef.current.clearMarker(`waypoint-${i}`);
-      }
-
-      // Add new markers in correct order
-      updatedWaypoints.forEach((waypoint, idx) => {
-        if (waypoint.lat && waypoint.lng) {
-          mapServiceRef.current?.addOrUpdateMarker(`waypoint-${idx}`, waypoint);
-        }
-      });
+  // Update the state with the new array
+  setRoute((prev) => ({
+    ...prev,
+    waypoints: updatedWaypoints,
+  }));
+  
+  // Update markers after reordering
+  if (mapServiceRef.current) { // This null check is already here
+    // First remove all waypoint markers
+    for (let i = 0; i < Math.max(updatedWaypoints.length, route.waypoints.length); i++) {
+      mapServiceRef.current.clearMarker(`waypoint-${i}`);
     }
-  };
+    
+    // Then add the markers in their new positions
+    updatedWaypoints.forEach((waypoint, idx) => {
+      if (waypoint.lat && waypoint.lng && mapServiceRef.current) { // Added null check here
+        // Use addOrUpdateMarker which handles both regular markers and geofences
+        mapServiceRef.current.addOrUpdateMarker(`waypoint-${idx}`, waypoint);
+        
+        // If it's a geofence, make sure the geofence shape is displayed
+        if (waypoint.isGeofenceEnabled && waypoint.geoCodeData && mapServiceRef.current) { // Added null check here
+          mapServiceRef.current.displayGeozone(waypoint);
+        }
+      }
+    });
+  }
+};
 
   const calculateRoute = (isInitialCalculation = false) => {
     if (!mapServiceRef.current) return;
@@ -437,7 +441,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
       route.destination,
       currentWaypoints,
       route.travelMode,
-      (response) => {
+      (response:any) => {
         setIsLoading(false);
         setDirectionsResponse(response);
 
@@ -981,7 +985,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
           // Process with custom waypoints
           processRouteDataWithCustomWaypoints(response, 0, newWaypoints);
         },
-        (status) => {
+        (status:any) => {
           setIsLoading(false);
           alert(`Directions request failed due to ${status}`);
         }
@@ -1018,7 +1022,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
       mapServiceRef.current.reverseGeocode(
         locationSelectionModal.location.lat,
         locationSelectionModal.location.lng,
-        (address) => {
+        (address:any) => {
           // Open geofence creation modal
           setGeofenceModal({
             isOpen: true,
@@ -1033,7 +1037,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
           // If we have map service, enable drawing mode
           if (mapServiceRef.current) {
             // Start with circle drawing mode
-            mapServiceRef.current.enableDrawingMode("Circle", (shapeData) => {
+            mapServiceRef.current.enableDrawingMode("Circle", (shapeData:any) => {
               setDrawingShapeData(shapeData);
             });
           }
@@ -1048,18 +1052,17 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
   };
 
   const handleGeofenceModalClose = () => {
-    setGeofenceModal({
-      isOpen: false,
-      coordinates: { lat: 0, lng: 0 },
-      address: "",
-      locationType: "",
-    });
-
+    // Close the modal by setting isOpen to false
+    setGeofenceModal(prev => ({ 
+      ...prev, 
+      isOpen: false 
+    }));
+    
     // Disable drawing mode
     if (mapServiceRef.current) {
       mapServiceRef.current.disableDrawingMode();
     }
-
+    
     // Clear drawing shape data
     setDrawingShapeData(null);
   };
@@ -1068,7 +1071,7 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
     // Update drawing mode based on selected shape type
     if (mapServiceRef.current) {
       mapServiceRef.current.disableDrawingMode();
-      mapServiceRef.current.enableDrawingMode(shapeType, (shapeData) => {
+      mapServiceRef.current.enableDrawingMode(shapeType, (shapeData:any) => {
         setDrawingShapeData(shapeData);
       });
     }
@@ -1077,138 +1080,138 @@ const RouteEditor: React.FC<RouteEditorProps> = ({
   const handleGeofenceSubmit = async (geofenceData: any) => {
     try {
       setIsLoading(true);
-
+      
       // If we have drawing data, use it to update the geometry
       if (drawingShapeData) {
         geofenceData.geoCodeData.geometry = {
           ...geofenceData.geoCodeData.geometry,
-          ...drawingShapeData,
+          ...drawingShapeData
         };
       }
-
+      
+      // Store the current route state before making changes to preserve values
+      const currentRoute = { ...route };
+      
       // Create the geofence
       const response = await GeofenceService.createGeofence(geofenceData);
-
+      
       // Display success message
       toast.success("Geofence created successfully");
-
+      
+      // Save the original locationType for event dispatch
+      const originalLocationType = geofenceModal.locationType;
+      
       // Close the modal and reset its data
       setGeofenceModal({
         isOpen: false,
         coordinates: { lat: 0, lng: 0 },
-        address: "",
-        locationType: "",
+        address: '',
+        locationType: ''
       });
-
+      
       // Clear drawing shape data
       setDrawingShapeData(null);
-
+      
       // Disable drawing mode
       if (mapServiceRef.current) {
         mapServiceRef.current.disableDrawingMode();
       }
-
+      
       // Force refresh geozones list to include the new one
       const locationService = LocationSelectorService.getInstance();
       await locationService.initialize(true); // Pass true to force refresh
-
+      
       // Convert the new geofence to a location object
-      const geofenceLocation = GeofenceService.convertGeofenceToLocation(
-        response.data
-      );
-
+      const geofenceLocation = GeofenceService.convertGeofenceToLocation(response.data);
+      
       // Explicitly set the name and ID to ensure it shows up in dropdown
       geofenceLocation.name = response.data.name;
       geofenceLocation.geofenceId = response.data._id;
       geofenceLocation.isGeofenceEnabled = true;
-
+      
       // Update the appropriate location based on locationType
-      if (geofenceModal.locationType === "origin") {
-        setRoute((prev) => ({
+      if (originalLocationType === 'origin') {
+        setRoute(prev => ({
           ...prev,
           origin: geofenceLocation,
+          // Preserve the destination and waypoints that were already set
+          destination: prev.destination,
+          waypoints: prev.waypoints
         }));
-
-        // Dispatch event to notify GeozoneSelector about the change
-        const event = new CustomEvent("geofence-created", {
-          detail: {
-            locationType: "origin",
-            geofenceId: response.data._id,
-          },
-        });
-        document.dispatchEvent(event);
-      } else if (geofenceModal.locationType === "destination") {
-        setRoute((prev) => ({
+      } else if (originalLocationType === 'destination') {
+        setRoute(prev => ({
           ...prev,
           destination: geofenceLocation,
+          // Preserve the origin and waypoints that were already set
+          origin: prev.origin,
+          waypoints: prev.waypoints
         }));
-
-        // Dispatch event to notify GeozoneSelector about the change
-        const event = new CustomEvent("geofence-created", {
-          detail: {
-            locationType: "destination",
-            geofenceId: response.data._id,
-          },
-        });
-        document.dispatchEvent(event);
-      } else if (geofenceModal.locationType.startsWith("waypoint-")) {
-        const waypointIndex = parseInt(
-          geofenceModal.locationType.split("-")[1]
-        );
+      } else if (originalLocationType.startsWith('waypoint-')) {
+        const waypointIndex = parseInt(originalLocationType.split('-')[1]);
         if (!isNaN(waypointIndex) && waypointIndex >= 0) {
-          const newWaypoints = [...route.waypoints];
+          // Create a new waypoints array with the updated waypoint
+          const newWaypoints = [...currentRoute.waypoints];
           newWaypoints[waypointIndex] = geofenceLocation;
-
-          setRoute((prev) => ({
+          
+          setRoute(prev => ({
             ...prev,
             waypoints: newWaypoints,
+            // Preserve the origin and destination that were already set
+            origin: prev.origin,
+            destination: prev.destination
           }));
-
-          // Dispatch event to notify GeozoneSelector about the change
-          const event = new CustomEvent("geofence-created", {
-            detail: {
-              locationType: `waypoint-${waypointIndex}`,
-              geofenceId: response.data._id,
-            },
-          });
-          document.dispatchEvent(event);
         }
       }
-
+      
+      // Dispatch event to notify GeozoneSelector about the change - with a slight delay
+      setTimeout(() => {
+        const event = new CustomEvent('geofence-created', {
+          detail: {
+            locationType: originalLocationType,
+            geofenceId: response.data._id,
+            geofenceName: response.data.name
+          }
+        });
+        document.dispatchEvent(event);
+        
+        console.log(`Dispatched geofence-created event for ${originalLocationType}`, {
+          geofenceId: response.data._id,
+          geofenceName: response.data.name
+        });
+      }, 50); // Short delay to ensure state updates have time to process
+      
       // Display the geofence on the map
       if (mapServiceRef.current) {
         // Clear any existing location marker
-        mapServiceRef.current.clearMarker(geofenceModal.locationType);
-
+        mapServiceRef.current.clearMarker(originalLocationType);
+        
         // Display the non-editable geofence shape
         mapServiceRef.current.displayGeozone(geofenceLocation);
-
-        // Make sure we recalculate the route if all required locations are set
-        if (route.origin.lat && route.destination.lat) {
-          setTimeout(() => {
-            calculateRoute(false);
-          }, 500);
-        }
+        
+        // DO NOT recalculate the route automatically
+        // The user will need to explicitly click "Calculate Route"
       }
+      
     } catch (error) {
-      console.error("Error creating geofence:", error);
+      console.error('Error creating geofence:', error);
       toast.error("Failed to create geofence. Please try again.");
-
+      
       // Also clear the modal state on error
       setGeofenceModal({
         isOpen: false,
         coordinates: { lat: 0, lng: 0 },
-        address: "",
-        locationType: "",
+        address: '',
+        locationType: ''
       });
-
+      
       // Clear drawing shape data
       setDrawingShapeData(null);
+      
     } finally {
       setIsLoading(false);
     }
   };
-
+  
   // Add this to RouteEditor component
   const handleGeofenceRadiusChange = (shapeData: any) => {
     setDrawingShapeData(shapeData);

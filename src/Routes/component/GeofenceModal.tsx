@@ -46,11 +46,17 @@ const GeofenceModal: React.FC<GeofenceModalProps> = ({
   // Reset form when modal opens with new coordinates
   useEffect(() => {
     if (isOpen) {
-      setGeofenceData((prev) => ({
-        ...prev,
-        coordinates: [initialCoordinates.lat, initialCoordinates.lng],
-      }));
-
+      // Reset the form state with default values every time the modal opens
+      setGeofenceData({
+        name: '',
+        isPublic: true,
+        isPrivate: false,
+        mobileNumber: '',
+        radius: 100,
+        shapeType: 'Circle',
+        coordinates: [initialCoordinates.lat, initialCoordinates.lng]
+      });
+      
       // If we have an address, try to extract components
       if (currentAddress) {
         setFinalAddress(currentAddress);

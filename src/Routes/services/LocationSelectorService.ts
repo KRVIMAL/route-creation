@@ -1,6 +1,6 @@
 // LocationSelectorService.ts
-import { Location } from '../types';
-import { fetchGeofences } from '../services/routes.service';
+import { Location } from "../types";
+import { fetchGeofences } from "../services/routes.service";
 
 export interface GeozoneData {
   _id: string;
@@ -31,21 +31,21 @@ class LocationSelectorService {
     return LocationSelectorService.instance;
   }
 
-// In LocationSelectorService.ts
-public async initialize(forceRefresh: boolean = false): Promise<void> {
-  if (this.isInitialized && !forceRefresh) return;
-  
-  try {
-    this.isLoading = true;
-    const data = await fetchGeofences();
-    this.geozones = data;
-    this.isInitialized = true;
-  } catch (error) {
-    console.error('Error initializing location selector service:', error);
-  } finally {
-    this.isLoading = false;
+  public async initialize(forceRefresh: boolean = false): Promise<void> {
+    // If already initialized and not forcing a refresh, return early
+    if (this.isInitialized && !forceRefresh) return;
+
+    try {
+      this.isLoading = true;
+      const data = await fetchGeofences();
+      this.geozones = data;
+      this.isInitialized = true;
+    } catch (error) {
+      console.error("Error initializing location selector service:", error);
+    } finally {
+      this.isLoading = false;
+    }
   }
-}
 
   public getGeozones(): GeozoneData[] {
     return this.geozones;
@@ -58,17 +58,17 @@ public async initialize(forceRefresh: boolean = false): Promise<void> {
   // Helper function to extract the actual ID regardless of type
   private extractGeofenceId(geofenceId: any): string | undefined {
     if (!geofenceId) return undefined;
-    
+
     // If it's a string, return it directly
-    if (typeof geofenceId === 'string') {
+    if (typeof geofenceId === "string") {
       return geofenceId;
     }
-    
+
     // If it's an object with _id property, return that
-    if (typeof geofenceId === 'object' && geofenceId._id) {
+    if (typeof geofenceId === "object" && geofenceId._id) {
       return geofenceId._id;
     }
-    
+
     return undefined;
   }
 
@@ -76,34 +76,39 @@ public async initialize(forceRefresh: boolean = false): Promise<void> {
     // Extract the actual ID if we were given an object
     const actualId = this.extractGeofenceId(id);
     if (!actualId) return undefined;
-    
-    return this.geozones.find(g => g._id === actualId);
+
+    return this.geozones.find((g) => g._id === actualId);
   }
 
   // Helper function to extract geozone data from a complex geofenceId object
   public getGeozoneFromComplexId(geofenceId: any): GeozoneData | undefined {
     if (!geofenceId) return undefined;
-    
+
     // If it's already a string ID, find by ID
-    if (typeof geofenceId === 'string') {
+    if (typeof geofenceId === "string") {
       return this.getGeozoneById(geofenceId);
     }
-    
+
     // If it's an object with necessary properties, convert it to GeozoneData
-    if (typeof geofenceId === 'object' && geofenceId._id && geofenceId.name && geofenceId.geoCodeData) {
+    if (
+      typeof geofenceId === "object" &&
+      geofenceId._id &&
+      geofenceId.name &&
+      geofenceId.geoCodeData
+    ) {
       return {
         _id: geofenceId._id,
         name: geofenceId.name,
-        finalAddress: geofenceId.finalAddress || '',
-        geoCodeData: geofenceId.geoCodeData
+        finalAddress: geofenceId.finalAddress || "",
+        geoCodeData: geofenceId.geoCodeData,
       };
     }
-    
+
     // If it's an object with just an _id, try to find by ID
-    if (typeof geofenceId === 'object' && geofenceId._id) {
+    if (typeof geofenceId === "object" && geofenceId._id) {
       return this.getGeozoneById(geofenceId._id);
     }
-    
+
     return undefined;
   }
 
@@ -112,22 +117,25 @@ public async initialize(forceRefresh: boolean = false): Promise<void> {
     let lat = 0;
     let lng = 0;
     const { geometry } = geozone.geoCodeData;
-    
+
     switch (geometry.type) {
-      case 'Point':
+      case "Point":
         // For Point, coordinates are [lat, lng]
         lat = geometry.coordinates[0] as number;
         lng = geometry.coordinates[1] as number;
         break;
-      case 'Circle':
+      case "Circle":
         // For Circle, coordinates are [lat, lng]
         lat = geometry.coordinates[0] as number;
         lng = geometry.coordinates[1] as number;
         break;
-      case 'Polygon':
-      case 'Polyline':
+      case "Polygon":
+      case "Polyline":
         // For Polygon/Polyline, use the first coordinate
-        if (Array.isArray(geometry.coordinates) && geometry.coordinates.length > 0) {
+        if (
+          Array.isArray(geometry.coordinates) &&
+          geometry.coordinates.length > 0
+        ) {
           const firstCoord = geometry.coordinates[0];
           if (Array.isArray(firstCoord) && firstCoord.length >= 2) {
             lat = firstCoord[0];
@@ -135,9 +143,12 @@ public async initialize(forceRefresh: boolean = false): Promise<void> {
           }
         }
         break;
-      case 'Rectangle':
+      case "Rectangle":
         // For Rectangle, use the first coordinate (northeast corner)
-        if (Array.isArray(geometry.coordinates) && geometry.coordinates.length > 0) {
+        if (
+          Array.isArray(geometry.coordinates) &&
+          geometry.coordinates.length > 0
+        ) {
           const neCorner = geometry.coordinates[0];
           if (Array.isArray(neCorner) && neCorner.length >= 2) {
             lat = neCorner[0];
@@ -156,15 +167,15 @@ public async initialize(forceRefresh: boolean = false): Promise<void> {
       lng,
       isGeofenceEnabled: true,
       geofenceId: geozone._id,
-      geoCodeData: geozone.geoCodeData
+      geoCodeData: geozone.geoCodeData,
     };
   }
-  
+
   // Create location from a complex geofenceId object
   public createLocationFromComplexGeofenceId(geofenceId: any): Location | null {
     const geozone = this.getGeozoneFromComplexId(geofenceId);
     if (!geozone) return null;
-    
+
     return this.createLocationFromGeozone(geozone);
   }
 }
